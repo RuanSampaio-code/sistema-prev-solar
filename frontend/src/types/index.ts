@@ -20,7 +20,6 @@ export interface Result {
 
 export interface ImageRecord {
   id: number;
-  consumer_unit: string;
   original_name: string;
   file_size_kb: number;
   status: ImageStatus;
@@ -41,5 +40,5 @@ export interface DashboardStats {
   total_processed: number;
   total_panels: number;
   highest_kwh_month: number;
-  ranking: { consumer_unit: string; kwh_month: number }[];
+  ranking: { original_name: string; kwh_month: number }[];
 }

@@ -23,14 +23,14 @@ def dashboard(
     highest_kwh = db.query(func.max(Result.estimated_kwh_month)).scalar() or 0.0
 
     ranking_rows = (
-        db.query(Image.consumer_unit, func.max(Result.estimated_kwh_month).label("kwh"))
+        db.query(Image.original_name, func.max(Result.estimated_kwh_month).label("kwh"))
         .join(Result)
-        .group_by(Image.consumer_unit)
+        .group_by(Image.original_name)
         .order_by(func.max(Result.estimated_kwh_month).desc())
         .limit(10)
         .all()
     )
-    ranking = [{"consumer_unit": r.consumer_unit, "kwh_month": r.kwh} for r in ranking_rows]
+    ranking = [{"original_name": r.original_name, "kwh_month": r.kwh} for r in ranking_rows]
 
     return DashboardStats(
         total_images=total_images,

@@ -55,7 +55,7 @@ export default function DashboardPage() {
           <BarChart data={data?.ranking ?? []} layout="vertical" margin={{ left: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis type="number" stroke="#64748B" tick={{ fill: "#94A3B8", fontSize: 12 }} />
-            <YAxis type="category" dataKey="consumer_unit" stroke="#64748B" tick={{ fill: "#94A3B8", fontSize: 12 }} width={160} />
+            <YAxis type="category" dataKey="original_name" stroke="#64748B" tick={{ fill: "#94A3B8", fontSize: 12 }} width={160} />
             <Tooltip
               contentStyle={{ backgroundColor: "#1E293B", border: "1px solid #334155", borderRadius: 8 }}
               labelStyle={{ color: "#F8FAFC" }}

@@ -3,11 +3,10 @@ from sqlalchemy.orm import Session
 from app.models.image import Image, ImageStatus
 
 
-def create(db: Session, user_id: int, consumer_unit: str, filename: str, filepath: str,
+def create(db: Session, user_id: int, filename: str, filepath: str,
            original_name: str, file_size_kb: float) -> Image:
     image = Image(
         user_id=user_id,
-        consumer_unit=consumer_unit,
         filename=filename,
         filepath=filepath,
         original_name=original_name,
@@ -34,7 +33,7 @@ def list_paginated(db: Session, page: int, page_size: int, search: str | None,
                    status: str | None, order_by: str) -> tuple[list[Image], int]:
     q = db.query(Image)
     if search:
-        q = q.filter(Image.consumer_unit.ilike(f"%{search}%"))
+        q = q.filter(Image.original_name.ilike(f"%{search}%"))
     if status:
         q = q.filter(Image.status == status)
 

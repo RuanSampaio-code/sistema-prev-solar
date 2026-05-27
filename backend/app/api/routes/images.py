@@ -3,7 +3,7 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -33,7 +33,6 @@ def _validate_file(file: UploadFile):
 
 @router.post("/upload", response_model=list[ImageResponse], status_code=status.HTTP_202_ACCEPTED)
 async def upload_images(
-    consumer_unit: str = Form(...),
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -62,7 +61,6 @@ async def upload_images(
         image = image_repository.create(
             db,
             user_id=current_user.id,
-            consumer_unit=consumer_unit,
             filename=unique_name,
             filepath=save_path,
             original_name=file.filename or unique_name,

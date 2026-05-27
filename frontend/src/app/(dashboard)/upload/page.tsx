@@ -2,16 +2,10 @@
 
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { toast } from "sonner";
-import { CloudUpload, X, ImageIcon, Loader2, CheckCircle2 } from "lucide-react";
+import { CloudUpload, X, Loader2, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-
-const schema = z.object({ consumer_unit: z.string().min(3, "Informe a unidade consumidora") });
-type Form = z.infer<typeof schema>;
 
 interface FileItem {
   file: File;
@@ -22,10 +16,6 @@ interface FileItem {
 export default function UploadPage() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [uploading, setUploading] = useState(false);
-
-  const { register, handleSubmit, formState: { errors } } = useForm<Form>({
-    resolver: zodResolver(schema),
-  });
 
   const onDrop = useCallback((accepted: File[]) => {
     const newItems = accepted.map((file) => ({
@@ -54,7 +44,8 @@ export default function UploadPage() {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
-  async function onSubmit(data: Form) {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     if (files.length === 0) {
       toast.error("Selecione ao menos uma imagem");
       return;
@@ -62,7 +53,6 @@ export default function UploadPage() {
     setUploading(true);
 
     const formData = new FormData();
-    formData.append("consumer_unit", data.consumer_unit);
     files.forEach((f) => formData.append("files", f.file));
 
     try {
@@ -85,19 +75,7 @@ export default function UploadPage() {
         <p className="text-muted text-sm mt-1">Envie imagens de painéis solares para análise</p>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <div>
-          <label className="block text-sm text-slate-300 mb-1.5">Unidade Consumidora *</label>
-          <input
-            {...register("consumer_unit")}
-            placeholder="Ex: Rua das Flores, 42 – Fortaleza / CE"
-            className="w-full bg-surface border border-border rounded-md px-3 py-2.5 text-white placeholder:text-muted focus:outline-none focus:border-primary transition-colors"
-          />
-          {errors.consumer_unit && (
-            <p className="text-red-400 text-xs mt-1">{errors.consumer_unit.message}</p>
-          )}
-        </div>
-
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div
           {...getRootProps()}
           className={cn(

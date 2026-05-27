@@ -14,7 +14,6 @@ class ResultSchema(BaseModel):
 
 class ImageResponse(BaseModel):
     id: int
-    consumer_unit: str
     original_name: str
     file_size_kb: float
     status: str

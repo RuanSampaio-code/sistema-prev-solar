@@ -28,12 +28,12 @@ def export_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Unidade Consumidora", "Quantidade de Painéis", "Área Detectada (m²)",
+    writer.writerow(["Imagem", "Quantidade de Painéis", "Área Detectada (m²)",
                      "Potencial Energético (kWh/mês)", "Data do Processamento"])
 
     for image, result in rows:
         writer.writerow([
-            image.consumer_unit,
+            image.original_name,
             result.panel_count,
             f"{result.detected_area_m2:.2f}",
             f"{result.estimated_kwh_month:.2f}",

@@ -66,7 +66,7 @@ export default function ResultsPage() {
           <input
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Buscar unidade consumidora..."
+            placeholder="Buscar imagem..."
             className="w-full bg-surface border border-border rounded-md pl-9 pr-3 py-2 text-white placeholder:text-muted text-sm focus:outline-none focus:border-primary"
           />
         </div>
@@ -97,7 +97,7 @@ export default function ResultsPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-muted text-left">
-              <th className="px-4 py-3 font-medium">Unidade Consumidora</th>
+              <th className="px-4 py-3 font-medium">Imagem</th>
               <th className="px-4 py-3 font-medium">Painéis</th>
               <th className="px-4 py-3 font-medium">kWh/mês</th>
               <th className="px-4 py-3 font-medium">Data</th>
@@ -117,7 +117,7 @@ export default function ResultsPage() {
             ) : (
               data?.items.map((img: ImageRecord) => (
                 <tr key={img.id} className="border-b border-border/50 hover:bg-white/5 transition-colors">
-                  <td className="px-4 py-3 text-white font-medium">{img.consumer_unit}</td>
+                  <td className="px-4 py-3 text-white font-medium">{img.original_name}</td>
                   <td className="px-4 py-3 text-slate-300">{img.result?.panel_count ?? "—"}</td>
                   <td className="px-4 py-3 text-slate-300">
                     {img.result ? (

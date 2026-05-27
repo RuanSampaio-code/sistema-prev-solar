@@ -49,8 +49,8 @@ export default function ResultDetailPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-white">{image.consumer_unit}</h1>
-            <p className="text-muted text-sm">{image.original_name} · {formatDate(image.uploaded_at)}</p>
+            <h1 className="text-2xl font-bold text-white">{image.original_name}</h1>
+            <p className="text-muted text-sm">{formatDate(image.uploaded_at)}</p>
           </div>
         </div>
         <button
@@ -65,9 +65,9 @@ export default function ResultDetailPage() {
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-surface border border-border rounded-lg p-6 max-w-sm w-full mx-4 space-y-4">
-            <h2 className="text-white font-semibold text-lg">Deletar unidade consumidora?</h2>
+            <h2 className="text-white font-semibold text-lg">Deletar imagem?</h2>
             <p className="text-muted text-sm">
-              A análise de <span className="text-slate-300 font-medium">{image.consumer_unit}</span> e todos
+              A análise de <span className="text-slate-300 font-medium">{image.original_name}</span> e todos
               os arquivos associados serão removidos permanentemente.
             </p>
             <div className="flex gap-3 justify-end">

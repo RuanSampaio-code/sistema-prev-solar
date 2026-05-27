@@ -19,7 +19,6 @@ class Image(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    consumer_unit: Mapped[str] = mapped_column(String(255), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     filepath: Mapped[str] = mapped_column(String(500), nullable=False)
     original_name: Mapped[str] = mapped_column(String(255), nullable=False)
