@@ -29,10 +29,19 @@ def load_model():
     return _model
 
 
-def predict_mask(image_tensor: torch.Tensor) -> np.ndarray:
-    """Recebe tensor (1, 3, H, W) normalizado, retorna máscara binária (H, W) em numpy."""
+def predict_probs(image_tensor: torch.Tensor) -> np.ndarray:
+    """Recebe tensor (1, 3, H, W) normalizado; retorna mapa de probabilidades float32 (H, W) em [0, 1].
+
+    Usado pelo pipeline de tiling para acumular predições de tiles sobrepostos antes
+    de aplicar o threshold — a média entre tiles sobrepostos suaviza artefatos de borda.
+    """
     model = load_model()
     with torch.no_grad():
         output = model(image_tensor.to(_device))
-        mask = torch.sigmoid(output).squeeze().cpu().numpy()
-    return (mask > 0.5).astype(np.uint8)
+        prob = torch.sigmoid(output).squeeze().cpu().numpy()
+    return prob.astype(np.float32)
+
+
+def predict_mask(image_tensor: torch.Tensor) -> np.ndarray:
+    """Atalho que binariza com threshold 0.5. Mantido para compatibilidade."""
+    return (predict_probs(image_tensor) > 0.5).astype(np.uint8)

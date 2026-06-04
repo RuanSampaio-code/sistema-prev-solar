@@ -2,11 +2,11 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import type { ImageRecord } from "@/types";
-import { ArrowLeft, Zap, ScanLine, SquareStack, FileDown, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Zap, ScanLine, SquareStack, FileDown, Loader2, Trash2, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 
 export default function ResultDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -154,6 +154,10 @@ export default function ResultDetailPage() {
   );
 }
 
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 8;
+const ZOOM_STEP = 0.3;
+
 function VizImage({ imageId }: { imageId: string }) {
   const { data: url, isLoading, isError } = useQuery<string>({
     queryKey: ["viz", imageId],
@@ -168,6 +172,103 @@ function VizImage({ imageId }: { imageId: string }) {
       return URL.createObjectURL(blob);
     },
   });
+
+  // Refs para zoom/pan — lidos pelo handler nativo sem closure stale
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+
+  // State só para re-renderizar o JSX
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastPos = useRef({ x: 0, y: 0 });
+
+  // Mantém refs sincronizados com state
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => { panRef.current = pan; }, [pan]);
+
+  const clamp = (z: number, px: number, py: number) => {
+    const el = containerRef.current;
+    if (!el) return { x: px, y: py };
+    const { width: cw, height: ch } = el.getBoundingClientRect();
+    return {
+      x: Math.min(0, Math.max(cw - cw * z, px)),
+      y: Math.min(0, Math.max(ch - ch * z, py)),
+    };
+  };
+
+  const applyZoom = useCallback((nextZoom: number, cx: number, cy: number) => {
+    const prevZoom = zoomRef.current;
+    const prevPan = panRef.current;
+    const nx = cx - (cx - prevPan.x) * (nextZoom / prevZoom);
+    const ny = cy - (cy - prevPan.y) * (nextZoom / prevZoom);
+    const clamped = clamp(nextZoom, nx, ny);
+    zoomRef.current = nextZoom;
+    panRef.current = clamped;
+    setZoom(nextZoom);
+    setPan(clamped);
+  }, []);
+
+  const reset = useCallback(() => {
+    zoomRef.current = 1;
+    panRef.current = { x: 0, y: 0 };
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  // Wheel nativo com passive:false — único jeito de preventDefault funcionar
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const delta = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
+      const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoomRef.current + delta));
+      applyZoom(next, cx, cy);
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [applyZoom]);
+
+  const handleMouseDown = (e: { clientX: number; clientY: number }) => {
+    if (zoomRef.current <= 1) return;
+    setIsDragging(true);
+    lastPos.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseMove = (e: { clientX: number; clientY: number }) => {
+    if (!isDragging) return;
+    const dx = e.clientX - lastPos.current.x;
+    const dy = e.clientY - lastPos.current.y;
+    lastPos.current = { x: e.clientX, y: e.clientY };
+    const clamped = clamp(zoomRef.current, panRef.current.x + dx, panRef.current.y + dy);
+    panRef.current = clamped;
+    setPan(clamped);
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
+
+  const zoomIn = () => {
+    const next = Math.min(ZOOM_MAX, zoomRef.current + ZOOM_STEP * 2);
+    const el = containerRef.current;
+    const cx = el ? el.getBoundingClientRect().width / 2 : 0;
+    const cy = el ? el.getBoundingClientRect().height / 2 : 0;
+    applyZoom(next, cx, cy);
+  };
+
+  const zoomOut = () => {
+    const next = Math.max(ZOOM_MIN, zoomRef.current - ZOOM_STEP * 2);
+    if (next <= 1) { reset(); return; }
+    const el = containerRef.current;
+    const cx = el ? el.getBoundingClientRect().width / 2 : 0;
+    const cy = el ? el.getBoundingClientRect().height / 2 : 0;
+    applyZoom(next, cx, cy);
+  };
 
   if (isLoading) {
     return (
@@ -185,12 +286,82 @@ function VizImage({ imageId }: { imageId: string }) {
     );
   }
 
+  const isZoomed = zoom > 1;
+
   return (
-    <img
-      src={url}
-      alt="Resultado da análise"
-      className="w-full object-contain max-h-[520px]"
-    />
+    <div className="relative select-none">
+      {/* viewport — overflow hidden contém a imagem transformada */}
+      <div
+        ref={containerRef}
+        className="overflow-hidden"
+        style={{
+          maxHeight: 520,
+          cursor: isDragging ? "grabbing" : isZoomed ? "grab" : "default",
+        }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onDoubleClick={reset}
+      >
+        <img
+          src={url}
+          alt="Resultado da análise"
+          draggable={false}
+          style={{
+            width: "100%",
+            display: "block",
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: "0 0",
+            transition: isDragging ? "none" : "transform 0.12s ease-out",
+          }}
+        />
+      </div>
+
+      {/* barra de controles */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/70 backdrop-blur-sm rounded-full px-3 py-1.5 border border-white/10 z-10">
+        <button
+          onClick={zoomOut}
+          disabled={!isZoomed}
+          title="Diminuir zoom"
+          className="p-1 rounded-full text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
+        >
+          <ZoomOut className="w-4 h-4" />
+        </button>
+
+        <span className="text-xs text-slate-300 w-12 text-center tabular-nums">
+          {Math.round(zoom * 100)}%
+        </span>
+
+        <button
+          onClick={zoomIn}
+          disabled={zoom >= ZOOM_MAX}
+          title="Aumentar zoom"
+          className="p-1 rounded-full text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
+        >
+          <ZoomIn className="w-4 h-4" />
+        </button>
+
+        {isZoomed && (
+          <>
+            <div className="w-px h-4 bg-white/20 mx-1" />
+            <button
+              onClick={reset}
+              title="Resetar zoom (duplo clique)"
+              className="p-1 rounded-full text-slate-300 hover:text-white transition-colors"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {!isZoomed && (
+        <p className="absolute bottom-3 right-3 text-[11px] text-white/35 pointer-events-none">
+          Scroll ou botões para zoom · Arraste para mover
+        </p>
+      )}
+    </div>
   );
 }
 

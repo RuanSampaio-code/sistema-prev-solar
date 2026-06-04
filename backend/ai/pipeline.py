@@ -1,21 +1,27 @@
-import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import cv2
 import numpy as np
 import torch
-from torchvision import transforms
+from PIL import Image as PILImage
 
-from ai.inference import predict_mask
+from ai.inference import predict_probs
 from app.core.config import settings
 
-_TRANSFORM = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+# ── Parâmetros de inferência (alinhados ao notebook de referência) ────────────
+TILE_SIZE = 640        # tamanho do tile — mesmo do notebook
+OVERLAP = 128          # sobreposição entre tiles; a média suaviza bordas
+THRESHOLD = 0.40       # probabilidade mínima para marcar pixel como painel
+MIN_PANEL_PIXELS = 10  # área mínima de contorno para ser considerado painel
 
-TARGET_SIZE = (512, 512)
+# Normalização ImageNet — obrigatória para o encoder ResNet34
+_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+
+# Premissa de área por imagem (fallback quando GSD não está disponível)
+_REFERENCE_AREA_M2 = 200.0
 
 
 @dataclass
@@ -38,22 +44,114 @@ def _estimate_kwh(area_m2: float) -> float:
     return round(kwh, 2)
 
 
-def _count_panels(mask: np.ndarray) -> tuple[int, float]:
-    """Retorna (quantidade de painéis, área relativa em m² estimada)."""
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+def _load_image(filepath: str) -> np.ndarray:
+    """Carrega a imagem em resolução nativa sem redimensionar.
 
-    min_panel_pixels = 200
-    valid = [c for c in contours if cv2.contourArea(c) >= min_panel_pixels]
+    Para TIFFs usa PIL (suporta 16-bit e multi-banda); converte para uint8 BGR.
+    Isso preserva a resolução original — essencial para que o modelo consiga
+    distinguir painéis individuais via tiling.
+    """
+    ext = Path(filepath).suffix.lower()
+    if ext in (".tif", ".tiff"):
+        try:
+            pil_img = PILImage.open(filepath)
+            # Garante 3 canais RGB independente do modo do arquivo (L, RGBA, P…)
+            pil_rgb = pil_img.convert("RGB")
+            arr = np.array(pil_rgb)
+            # PIL retorna uint8 ou uint16; normaliza para uint8
+            if arr.dtype != np.uint8:
+                arr = (arr / arr.max() * 255).astype(np.uint8) if arr.max() > 0 else arr.astype(np.uint8)
+            return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+        except Exception:
+            pass  # cai no cv2 como fallback
 
-    total_pixels = mask.size
-    panel_pixels = sum(cv2.contourArea(c) for c in valid)
-    area_ratio = panel_pixels / total_pixels if total_pixels > 0 else 0.0
+    img = cv2.imread(filepath)
+    if img is None:
+        raise ValueError(f"Não foi possível ler a imagem: {filepath}")
+    return img
 
-    # Premissa: imagem típica de drone cobre ~200 m²; área detectada é proporcional
-    reference_image_area_m2 = 200.0
-    area_m2 = round(area_ratio * reference_image_area_m2, 2)
 
-    return len(valid), area_m2
+def _get_gsd(filepath: str) -> Optional[float]:
+    """Tenta ler GSD real (metros/pixel) dos metadados do GeoTIFF via rasterio.
+
+    Retorna None se rasterio não estiver disponível ou o arquivo não tiver CRS.
+    """
+    ext = Path(filepath).suffix.lower()
+    if ext not in (".tif", ".tiff"):
+        return None
+    try:
+        import rasterio
+        with rasterio.open(filepath) as src:
+            t = src.transform
+            return float((abs(t[0]) + abs(t[4])) / 2)
+    except Exception:
+        return None
+
+
+def _preprocess_tile(tile_bgr: np.ndarray) -> torch.Tensor:
+    """BGR uint8 → tensor NCHW float32 normalizado com estatísticas ImageNet."""
+    rgb = cv2.cvtColor(tile_bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+    norm = (rgb - _MEAN) / _STD
+    return torch.from_numpy(norm.transpose(2, 0, 1)).float().unsqueeze(0)
+
+
+def _run_tiled_inference(img: np.ndarray) -> np.ndarray:
+    """Inferência tile a tile com overlap; combina predições por média.
+
+    A abordagem de média é superior ao NMS para UNet: regiões sobrepostas
+    acumulam mais predições, suavizando artefatos de borda automaticamente.
+    Retorna mapa de probabilidades float32 (H, W) na resolução original.
+    """
+    H, W = img.shape[:2]
+    prob_acum = np.zeros((H, W), dtype=np.float32)
+    count_acum = np.zeros((H, W), dtype=np.float32)
+
+    step = TILE_SIZE - OVERLAP
+    ys = sorted(set(list(range(0, max(1, H - TILE_SIZE + 1), step)) + [max(0, H - TILE_SIZE)]))
+    xs = sorted(set(list(range(0, max(1, W - TILE_SIZE + 1), step)) + [max(0, W - TILE_SIZE)]))
+
+    for y in ys:
+        for x in xs:
+            tile = img[y:y + TILE_SIZE, x:x + TILE_SIZE]
+            th, tw = tile.shape[:2]
+
+            # Padding para tiles de borda menores que TILE_SIZE
+            if th < TILE_SIZE or tw < TILE_SIZE:
+                padded = np.zeros((TILE_SIZE, TILE_SIZE, 3), dtype=np.uint8)
+                padded[:th, :tw] = tile
+                tile_input = padded
+            else:
+                tile_input = tile
+
+            tensor = _preprocess_tile(tile_input)
+            prob = predict_probs(tensor)  # float32 (TILE_SIZE, TILE_SIZE)
+
+            # Acumula apenas a região válida (sem padding)
+            prob_acum[y:y + th, x:x + tw] += prob[:th, :tw]
+            count_acum[y:y + th, x:x + tw] += 1
+
+    count_acum = np.maximum(count_acum, 1)
+    return prob_acum / count_acum
+
+
+def _count_panels(mask_bin: np.ndarray, gsd: Optional[float]) -> tuple[int, float]:
+    """Extrai contornos, filtra ruídos e estima área real.
+
+    Quando GSD está disponível (lido dos metadados do TIFF) usa
+    area_m2 = pixels × gsd². Caso contrário usa a premissa de 200 m²/imagem.
+    """
+    contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    valid = [c for c in contours if cv2.contourArea(c) >= MIN_PANEL_PIXELS]
+
+    if gsd is not None:
+        area_m2 = sum(cv2.contourArea(c) * (gsd ** 2) for c in valid)
+    else:
+        total_pixels = mask_bin.size
+        panel_pixels = sum(cv2.contourArea(c) for c in valid)
+        ratio = panel_pixels / total_pixels if total_pixels > 0 else 0.0
+        area_m2 = ratio * _REFERENCE_AREA_M2
+
+    return len(valid), round(area_m2, 2)
 
 
 def _save_mask(mask: np.ndarray, original_filepath: str) -> str:
@@ -65,19 +163,19 @@ def _save_mask(mask: np.ndarray, original_filepath: str) -> str:
 
 
 def process_image(filepath: str) -> PipelineResult:
-    image_bgr = cv2.imread(filepath)
-    if image_bgr is None:
-        raise ValueError(f"Não foi possível ler a imagem: {filepath}")
+    # Carrega em resolução nativa — sem redimensionar
+    img = _load_image(filepath)
 
-    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    resized = cv2.resize(image_rgb, TARGET_SIZE)
+    # GSD dos metadados para cálculo preciso de área (None = usa premissa 200 m²)
+    gsd = _get_gsd(filepath)
 
-    tensor = _TRANSFORM(resized).unsqueeze(0)
-    mask = predict_mask(tensor)
+    # Tiling com overlap → mapa de probabilidades → threshold
+    prob_map = _run_tiled_inference(img)
+    mask_bin = (prob_map > THRESHOLD).astype(np.uint8)
 
-    panel_count, area_m2 = _count_panels(mask)
+    panel_count, area_m2 = _count_panels(mask_bin, gsd)
     kwh = _estimate_kwh(area_m2)
-    mask_path = _save_mask(mask, filepath)
+    mask_path = _save_mask(mask_bin, filepath)
 
     return PipelineResult(
         panel_count=panel_count,

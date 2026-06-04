@@ -65,6 +65,14 @@ def _build_visualization(image_path: str, mask_path: str, panel_count: int,
         cv2.putText(result_img, line, (20, 38 + i * 26),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (245, 158, 11), 1, cv2.LINE_AA)
 
+    # Limita a resolução de saída para não sobrecarregar a resposta HTTP.
+    # Imagens de drone em resolução nativa podem ter 3840×2160+.
+    max_dim = 4000
+    h_r, w_r = result_img.shape[:2]
+    if max(h_r, w_r) > max_dim:
+        scale = max_dim / max(h_r, w_r)
+        result_img = cv2.resize(result_img, (int(w_r * scale), int(h_r * scale)))
+
     _, buf = cv2.imencode(".jpg", result_img, [cv2.IMWRITE_JPEG_QUALITY, 92])
     return buf.tobytes()
 
