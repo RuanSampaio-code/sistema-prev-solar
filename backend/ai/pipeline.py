@@ -1,6 +1,6 @@
+import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -20,9 +20,6 @@ MIN_PANEL_PIXELS = 10  # área mínima de contorno para ser considerado painel
 _MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 _STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
-# Premissa de área por imagem (fallback quando GSD não está disponível)
-_REFERENCE_AREA_M2 = 200.0
-
 
 @dataclass
 class PipelineResult:
@@ -35,11 +32,10 @@ class PipelineResult:
 def _estimate_kwh(area_m2: float) -> float:
     kwh = (
         area_m2
-        * settings.WP_PER_M2
-        * settings.EFFICIENCY_FACTOR
-        * settings.DAILY_PEAK_SUN_HOURS
+        * settings.IRRADIACAO_LOCAL
+        * settings.EFICIENCIA_MEDIA
+        * (1 - settings.PERDAS_SISTEMA)
         * 30
-        / 1000
     )
     return round(kwh, 2)
 
@@ -71,21 +67,43 @@ def _load_image(filepath: str) -> np.ndarray:
     return img
 
 
-def _get_gsd(filepath: str) -> Optional[float]:
-    """Tenta ler GSD real (metros/pixel) dos metadados do GeoTIFF via rasterio.
+_GSD_FALLBACK = 0.30  # metros/pixel — usado quando metadados estão ausentes ou inválidos
 
-    Retorna None se rasterio não estiver disponível ou o arquivo não tiver CRS.
+
+def _get_gsd(filepath: str) -> float:
+    """Lê o GSD real (metros/pixel) dos metadados do GeoTIFF.
+
+    Converte graus → metros quando o CRS for EPSG:4326 (geográfico), que é o
+    caso típico de imagens de drone exportadas diretamente de software GIS.
+    Sem a conversão, gsd fica em ~0.0000013 graus/px e area_px * gsd² ≈ 0.
+
+    Retorna GSD_FALLBACK (0.30 m/px) se rasterio não estiver disponível,
+    o arquivo não for TIFF, ou os metadados forem inválidos/ausentes.
     """
     ext = Path(filepath).suffix.lower()
     if ext not in (".tif", ".tiff"):
-        return None
+        return _GSD_FALLBACK
     try:
         import rasterio
         with rasterio.open(filepath) as src:
             t = src.transform
-            return float((abs(t[0]) + abs(t[4])) / 2)
+            gsd_x = abs(t[0])
+            gsd_y = abs(t[4])
+            gsd_raw = (gsd_x + gsd_y) / 2
+
+            if src.crs and "EPSG:4326" in str(src.crs):
+                # Metadados em graus decimais → converte para metros usando latitude
+                lat_rad = math.radians(src.bounds.bottom)
+                m_per_deg = 111320.0 * (1 + math.cos(lat_rad)) / 2
+                return float(gsd_raw * m_per_deg)
+
+            # CRS projetado (metros); valida intervalo razoável (0–10 m/px)
+            if 0 < gsd_raw <= 10:
+                return float(gsd_raw)
+
+            return _GSD_FALLBACK
     except Exception:
-        return None
+        return _GSD_FALLBACK
 
 
 def _preprocess_tile(tile_bgr: np.ndarray) -> torch.Tensor:
@@ -134,23 +152,15 @@ def _run_tiled_inference(img: np.ndarray) -> np.ndarray:
     return prob_acum / count_acum
 
 
-def _count_panels(mask_bin: np.ndarray, gsd: Optional[float]) -> tuple[int, float]:
-    """Extrai contornos, filtra ruídos e estima área real.
+def _count_panels(mask_bin: np.ndarray, gsd: float) -> tuple[int, float]:
+    """Extrai contornos, filtra ruídos e calcula área real via GSD.
 
-    Quando GSD está disponível (lido dos metadados do TIFF) usa
-    area_m2 = pixels × gsd². Caso contrário usa a premissa de 200 m²/imagem.
+    area_m2 = Σ(area_contorno_px × gsd²)
+    O GSD já chega convertido para metros/pixel por _get_gsd().
     """
     contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     valid = [c for c in contours if cv2.contourArea(c) >= MIN_PANEL_PIXELS]
-
-    if gsd is not None:
-        area_m2 = sum(cv2.contourArea(c) * (gsd ** 2) for c in valid)
-    else:
-        total_pixels = mask_bin.size
-        panel_pixels = sum(cv2.contourArea(c) for c in valid)
-        ratio = panel_pixels / total_pixels if total_pixels > 0 else 0.0
-        area_m2 = ratio * _REFERENCE_AREA_M2
-
+    area_m2 = sum(cv2.contourArea(c) * (gsd ** 2) for c in valid)
     return len(valid), round(area_m2, 2)
 
 
@@ -166,7 +176,7 @@ def process_image(filepath: str) -> PipelineResult:
     # Carrega em resolução nativa — sem redimensionar
     img = _load_image(filepath)
 
-    # GSD dos metadados para cálculo preciso de área (None = usa premissa 200 m²)
+    # GSD em metros/pixel (converte graus→metros se CRS for EPSG:4326)
     gsd = _get_gsd(filepath)
 
     # Tiling com overlap → mapa de probabilidades → threshold

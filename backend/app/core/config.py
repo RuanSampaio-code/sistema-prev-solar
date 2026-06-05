@@ -19,9 +19,10 @@ class Settings(BaseSettings):
 
     CELERY_TASK_ALWAYS_EAGER: bool = False
 
-    WP_PER_M2: float = 160.0
-    EFFICIENCY_FACTOR: float = 0.75
-    DAILY_PEAK_SUN_HOURS: float = 4.5
+    # Parâmetros de estimativa energética (fórmula: área × irradiação × eficiência × (1-perdas) × 30)
+    IRRADIACAO_LOCAL: float = 5.5   # kWh/m²/dia — São Luís-MA (média anual)
+    EFICIENCIA_MEDIA: float = 0.18  # eficiência típica de painel fotovoltaico (18%)
+    PERDAS_SISTEMA: float = 0.14    # perdas por cabeamento, inversor, sujeira etc.
 
     @property
     def DATABASE_URL(self) -> str:
