@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from datetime import datetime, timezone
 
 from app.workers.celery_app import celery_app
@@ -31,6 +32,7 @@ def process_image_task(self, image_id: int):
             detected_area_m2=pipeline_result.detected_area_m2,
             estimated_kwh_month=pipeline_result.estimated_kwh_month,
             mask_filepath=pipeline_result.mask_filepath,
+            panels=[asdict(p) for p in pipeline_result.panels],
             processed_at=datetime.now(timezone.utc),
         )
         db.add(result)

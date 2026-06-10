@@ -10,12 +10,26 @@ export interface User {
 
 export type ImageStatus = "pending" | "processing" | "done" | "error";
 
+export interface Panel {
+  panel_id: number;
+  area_m2: number;
+  kwh_month: number;
+  centroid_x: number;
+  centroid_y: number;
+  bbox_x: number;
+  bbox_y: number;
+  bbox_width: number;
+  bbox_height: number;
+  confidence_mean: number;
+}
+
 export interface Result {
   id: number;
   panel_count: number;
   detected_area_m2: number;
   estimated_kwh_month: number;
   processed_at: string;
+  panels?: Panel[];
 }
 
 export interface ImageRecord {

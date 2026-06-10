@@ -1,5 +1,20 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+
+class PanelResultSchema(BaseModel):
+    panel_id: int
+    area_m2: float
+    kwh_month: float
+    centroid_x: int
+    centroid_y: int
+    bbox_x: int
+    bbox_y: int
+    bbox_width: int
+    bbox_height: int
+    confidence_mean: float
+
+    model_config = {"from_attributes": True}
 
 
 class ResultSchema(BaseModel):
@@ -8,6 +23,12 @@ class ResultSchema(BaseModel):
     detected_area_m2: float
     estimated_kwh_month: float
     processed_at: datetime
+    panels: list[PanelResultSchema] | None = []
+
+    @field_validator("panels", mode="before")
+    @classmethod
+    def coerce_panels(cls, v):
+        return v if v is not None else []
 
     model_config = {"from_attributes": True}
 

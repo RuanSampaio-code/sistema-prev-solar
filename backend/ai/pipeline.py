@@ -1,6 +1,7 @@
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from typing import List
 
 import cv2
 import numpy as np
@@ -22,11 +23,26 @@ _STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 
 @dataclass
+class PanelResult:
+    panel_id: int
+    area_m2: float
+    kwh_month: float
+    centroid_x: int
+    centroid_y: int
+    bbox_x: int
+    bbox_y: int
+    bbox_width: int
+    bbox_height: int
+    confidence_mean: float
+
+
+@dataclass
 class PipelineResult:
     panel_count: int
     detected_area_m2: float
     estimated_kwh_month: float
     mask_filepath: str | None
+    panels: List[PanelResult]
 
 
 def _estimate_kwh(area_m2: float) -> float:
@@ -152,16 +168,49 @@ def _run_tiled_inference(img: np.ndarray) -> np.ndarray:
     return prob_acum / count_acum
 
 
-def _count_panels(mask_bin: np.ndarray, gsd: float) -> tuple[int, float]:
-    """Extrai contornos, filtra ruídos e calcula área real via GSD.
+def _extract_panels(contours, prob_map: np.ndarray, gsd: float) -> List[PanelResult]:
+    """Converte contornos em PanelResult individuais com área, kWh, centroide, bbox e confiança."""
+    panels: List[PanelResult] = []
+    panel_id = 1
 
-    area_m2 = Σ(area_contorno_px × gsd²)
-    O GSD já chega convertido para metros/pixel por _get_gsd().
-    """
-    contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    valid = [c for c in contours if cv2.contourArea(c) >= MIN_PANEL_PIXELS]
-    area_m2 = sum(cv2.contourArea(c) * (gsd ** 2) for c in valid)
-    return len(valid), round(area_m2, 2)
+    for contour in contours:
+        area_px = cv2.contourArea(contour)
+        if area_px < MIN_PANEL_PIXELS:
+            continue
+
+        area_m2 = round(area_px * (gsd ** 2), 4)
+        kwh_month = _estimate_kwh(area_m2)
+
+        M = cv2.moments(contour)
+        if M["m00"] > 0:
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+        else:
+            cx = int(contour[:, 0, 0].mean())
+            cy = int(contour[:, 0, 1].mean())
+
+        bx, by, bw, bh = cv2.boundingRect(contour)
+
+        mask_contour = np.zeros(prob_map.shape, dtype=np.uint8)
+        cv2.drawContours(mask_contour, [contour], -1, 1, -1)
+        pixels_inside = prob_map[mask_contour == 1]
+        conf_mean = round(float(pixels_inside.mean()), 4) if len(pixels_inside) > 0 else 0.0
+
+        panels.append(PanelResult(
+            panel_id=panel_id,
+            area_m2=area_m2,
+            kwh_month=kwh_month,
+            centroid_x=cx,
+            centroid_y=cy,
+            bbox_x=bx,
+            bbox_y=by,
+            bbox_width=bw,
+            bbox_height=bh,
+            confidence_mean=conf_mean,
+        ))
+        panel_id += 1
+
+    return panels
 
 
 def _save_mask(mask: np.ndarray, original_filepath: str) -> str:
@@ -183,13 +232,17 @@ def process_image(filepath: str) -> PipelineResult:
     prob_map = _run_tiled_inference(img)
     mask_bin = (prob_map > THRESHOLD).astype(np.uint8)
 
-    panel_count, area_m2 = _count_panels(mask_bin, gsd)
+    contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    panels = _extract_panels(contours, prob_map, gsd)
+
+    area_m2 = round(sum(p.area_m2 for p in panels), 2)
     kwh = _estimate_kwh(area_m2)
     mask_path = _save_mask(mask_bin, filepath)
 
     return PipelineResult(
-        panel_count=panel_count,
+        panel_count=len(panels),
         detected_area_m2=area_m2,
         estimated_kwh_month=kwh,
         mask_filepath=mask_path,
+        panels=panels,
     )

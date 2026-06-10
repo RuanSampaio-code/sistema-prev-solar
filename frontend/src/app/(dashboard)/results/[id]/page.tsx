@@ -2,10 +2,10 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
-import type { ImageRecord } from "@/types";
+import type { ImageRecord, Panel } from "@/types";
 import { ArrowLeft, Zap, ScanLine, SquareStack, FileDown, Loader2, Trash2, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 
 export default function ResultDetailPage() {
@@ -13,12 +13,17 @@ export default function ResultDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [selectedPanel, setSelectedPanel] = useState<Panel | null>(null);
 
   const { data: image, isLoading } = useQuery<ImageRecord>({
     queryKey: ["image", id],
     queryFn: () => api.get(`/api/images/${id}`).then((r) => r.data),
     refetchInterval: (data) => (data?.status === "done" ? false : 5000),
   });
+
+  useEffect(() => {
+    setSelectedPanel(null);
+  }, [id]);
 
   const deleteMutation = useMutation({
     mutationFn: () => api.post(`/api/images/${id}/delete`),
@@ -37,6 +42,8 @@ export default function ResultDetailPage() {
   }
 
   if (!image) return null;
+
+  const panels = image.result?.panels ?? [];
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -97,68 +104,94 @@ export default function ResultDetailPage() {
           <p className="text-muted text-sm">Status atual: {image.status}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <>
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
-          {/* imagem processada */}
-          <div className="xl:col-span-2 bg-surface border border-border rounded-lg overflow-hidden">
-            <div className="px-4 py-3 border-b border-border">
-              <p className="text-white font-medium text-sm">Resultado da análise — painéis destacados</p>
-            </div>
-            <VizImage imageId={id} />
-          </div>
-
-          {/* stats */}
-          <div className="space-y-4">
-            <StatCard
-              icon={SquareStack}
-              label="Painéis detectados"
-              value={String(image.result?.panel_count ?? 0)}
-              color="bg-yellow-500"
-            />
-            <StatCard
-              icon={ScanLine}
-              label="Área estimada"
-              value={`${image.result?.detected_area_m2?.toFixed(2) ?? "0"} m²`}
-              color="bg-blue-600"
-            />
-            <StatCard
-              icon={Zap}
-              label="Potencial energético"
-              value={`${image.result?.estimated_kwh_month?.toFixed(1) ?? "0"} kWh/mês`}
-              color="bg-primary"
-            />
-
-            <div className="bg-surface border border-border rounded-lg p-4 space-y-2 text-sm">
-              <p className="text-muted font-medium">Arquivo</p>
-              <p className="text-slate-300 break-all">{image.original_name}</p>
-              <p className="text-muted font-medium mt-3">Tamanho</p>
-              <p className="text-slate-300">{(image.file_size_kb / 1024).toFixed(1)} MB</p>
-              <p className="text-muted font-medium mt-3">Processado em</p>
-              <p className="text-slate-300">
-                {image.result?.processed_at ? formatDate(image.result.processed_at) : "—"}
-              </p>
+            {/* imagem processada */}
+            <div className="xl:col-span-2 bg-surface border border-border rounded-lg overflow-hidden">
+              <div className="px-4 py-3 border-b border-border">
+                <p className="text-white font-medium text-sm">Resultado da análise — painéis destacados</p>
+              </div>
+              <VizImage
+                imageId={id}
+                selectedPanel={selectedPanel}
+                onClearSelection={() => setSelectedPanel(null)}
+              />
             </div>
 
-            <a
-              href={`${process.env.NEXT_PUBLIC_API_URL}/api/reports/csv?image_id=${id}`}
-              target="_blank"
-              className="flex items-center justify-center gap-2 w-full bg-surface border border-border text-slate-300 px-4 py-2.5 rounded-md hover:border-primary hover:text-white transition-colors text-sm"
-            >
-              <FileDown className="w-4 h-4" />
-              Exportar CSV
-            </a>
+            {/* stats */}
+            <div className="space-y-4">
+              <StatCard
+                icon={SquareStack}
+                label="Painéis detectados"
+                value={String(image.result?.panel_count ?? 0)}
+                color="bg-yellow-500"
+              />
+              <StatCard
+                icon={ScanLine}
+                label="Área estimada"
+                value={`${image.result?.detected_area_m2?.toFixed(2) ?? "0"} m²`}
+                color="bg-blue-600"
+              />
+              <StatCard
+                icon={Zap}
+                label="Potencial energético"
+                value={`${image.result?.estimated_kwh_month?.toFixed(1) ?? "0"} kWh/mês`}
+                color="bg-primary"
+              />
+
+              <div className="bg-surface border border-border rounded-lg p-4 space-y-2 text-sm">
+                <p className="text-muted font-medium">Arquivo</p>
+                <p className="text-slate-300 break-all">{image.original_name}</p>
+                <p className="text-muted font-medium mt-3">Tamanho</p>
+                <p className="text-slate-300">{(image.file_size_kb / 1024).toFixed(1)} MB</p>
+                <p className="text-muted font-medium mt-3">Processado em</p>
+                <p className="text-slate-300">
+                  {image.result?.processed_at ? formatDate(image.result.processed_at) : "—"}
+                </p>
+              </div>
+
+              <a
+                href={`${process.env.NEXT_PUBLIC_API_URL}/api/reports/csv?image_id=${id}`}
+                target="_blank"
+                className="flex items-center justify-center gap-2 w-full bg-surface border border-border text-slate-300 px-4 py-2.5 rounded-md hover:border-primary hover:text-white transition-colors text-sm"
+              >
+                <FileDown className="w-4 h-4" />
+                Exportar CSV
+              </a>
+            </div>
           </div>
-        </div>
+
+          <PanelsTable
+            panels={panels}
+            selectedPanelId={selectedPanel?.panel_id ?? null}
+            onSelectPanel={(p) =>
+              setSelectedPanel((prev) => (prev?.panel_id === p?.panel_id ? null : p))
+            }
+          />
+        </>
       )}
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// VizImage — viewport com zoom/pan + canvas overlay para painel selecionado
+// ---------------------------------------------------------------------------
+
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 8;
 const ZOOM_STEP = 0.3;
 
-function VizImage({ imageId }: { imageId: string }) {
+function VizImage({
+  imageId,
+  selectedPanel,
+  onClearSelection,
+}: {
+  imageId: string;
+  selectedPanel: Panel | null;
+  onClearSelection: () => void;
+}) {
   const { data: url, isLoading, isError } = useQuery<string>({
     queryKey: ["viz", imageId],
     queryFn: async () => {
@@ -173,19 +206,19 @@ function VizImage({ imageId }: { imageId: string }) {
     },
   });
 
-  // Refs para zoom/pan — lidos pelo handler nativo sem closure stale
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
-
-  // State só para re-renderizar o JSX
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const lastPos = useRef({ x: 0, y: 0 });
+  const wasDragged = useRef(false);
 
-  // Mantém refs sincronizados com state
+  const imgRef = useRef<HTMLImageElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { panRef.current = pan; }, [pan]);
 
@@ -218,7 +251,6 @@ function VizImage({ imageId }: { imageId: string }) {
     setPan({ x: 0, y: 0 });
   }, []);
 
-  // Wheel nativo com passive:false — único jeito de preventDefault funcionar
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -236,6 +268,7 @@ function VizImage({ imageId }: { imageId: string }) {
   }, [applyZoom]);
 
   const handleMouseDown = (e: { clientX: number; clientY: number }) => {
+    wasDragged.current = false;
     if (zoomRef.current <= 1) return;
     setIsDragging(true);
     lastPos.current = { x: e.clientX, y: e.clientY };
@@ -243,6 +276,7 @@ function VizImage({ imageId }: { imageId: string }) {
 
   const handleMouseMove = (e: { clientX: number; clientY: number }) => {
     if (!isDragging) return;
+    wasDragged.current = true;
     const dx = e.clientX - lastPos.current.x;
     const dy = e.clientY - lastPos.current.y;
     lastPos.current = { x: e.clientX, y: e.clientY };
@@ -252,6 +286,10 @@ function VizImage({ imageId }: { imageId: string }) {
   };
 
   const handleMouseUp = () => setIsDragging(false);
+
+  const handleClick = () => {
+    if (!wasDragged.current) onClearSelection();
+  };
 
   const zoomIn = () => {
     const next = Math.min(ZOOM_MAX, zoomRef.current + ZOOM_STEP * 2);
@@ -269,6 +307,45 @@ function VizImage({ imageId }: { imageId: string }) {
     const cy = el ? el.getBoundingClientRect().height / 2 : 0;
     applyZoom(next, cx, cy);
   };
+
+  const drawPanel = useCallback(() => {
+    const canvas = canvasRef.current;
+    const img = imgRef.current;
+    if (!canvas || !img || img.naturalWidth === 0) return;
+
+    canvas.width = img.offsetWidth;
+    canvas.height = img.offsetHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!selectedPanel) return;
+
+    const sx = img.offsetWidth / img.naturalWidth;
+    const sy = img.offsetHeight / img.naturalHeight;
+    const { bbox_x: bx, bbox_y: by, bbox_width: bw, bbox_height: bh, panel_id } = selectedPanel;
+
+    const rx = bx * sx;
+    const ry = by * sy;
+    const rw = bw * sx;
+    const rh = bh * sy;
+
+    ctx.strokeStyle = "#facc15";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(rx, ry, rw, rh);
+
+    const label = `#${panel_id}`;
+    ctx.font = "bold 10px monospace";
+    const tw = ctx.measureText(label).width;
+    const lx = rx;
+    const ly = ry;
+    ctx.fillStyle = "rgba(0,0,0,0.75)";
+    ctx.fillRect(lx, Math.max(0, ly - 14), tw + 6, 14);
+    ctx.fillStyle = "#facc15";
+    ctx.fillText(label, lx + 3, Math.max(11, ly - 3));
+  }, [selectedPanel]);
+
+  useEffect(() => { drawPanel(); }, [drawPanel]);
 
   if (isLoading) {
     return (
@@ -290,7 +367,6 @@ function VizImage({ imageId }: { imageId: string }) {
 
   return (
     <div className="relative select-none">
-      {/* viewport — overflow hidden contém a imagem transformada */}
       <div
         ref={containerRef}
         className="overflow-hidden"
@@ -302,26 +378,43 @@ function VizImage({ imageId }: { imageId: string }) {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onClick={handleClick}
         onDoubleClick={reset}
       >
-        <img
-          src={url}
-          alt="Resultado da análise"
-          draggable={false}
+        {/* wrapper compartilha o transform entre img e canvas */}
+        <div
           style={{
-            width: "100%",
-            display: "block",
+            position: "relative",
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: "0 0",
             transition: isDragging ? "none" : "transform 0.12s ease-out",
           }}
-        />
+        >
+          <img
+            ref={imgRef}
+            src={url}
+            alt="Resultado da análise"
+            draggable={false}
+            style={{ width: "100%", display: "block" }}
+            onLoad={drawPanel}
+          />
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              pointerEvents: "none",
+            }}
+          />
+        </div>
       </div>
 
-      {/* barra de controles */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/70 backdrop-blur-sm rounded-full px-3 py-1.5 border border-white/10 z-10">
         <button
-          onClick={zoomOut}
+          onClick={(e) => { e.stopPropagation(); zoomOut(); }}
           disabled={!isZoomed}
           title="Diminuir zoom"
           className="p-1 rounded-full text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
@@ -334,7 +427,7 @@ function VizImage({ imageId }: { imageId: string }) {
         </span>
 
         <button
-          onClick={zoomIn}
+          onClick={(e) => { e.stopPropagation(); zoomIn(); }}
           disabled={zoom >= ZOOM_MAX}
           title="Aumentar zoom"
           className="p-1 rounded-full text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
@@ -346,7 +439,7 @@ function VizImage({ imageId }: { imageId: string }) {
           <>
             <div className="w-px h-4 bg-white/20 mx-1" />
             <button
-              onClick={reset}
+              onClick={(e) => { e.stopPropagation(); reset(); }}
               title="Resetar zoom (duplo clique)"
               className="p-1 rounded-full text-slate-300 hover:text-white transition-colors"
             >
@@ -364,6 +457,96 @@ function VizImage({ imageId }: { imageId: string }) {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// PanelsTable — tabela de painéis individuais com destaque interativo
+// ---------------------------------------------------------------------------
+
+function PanelsTable({
+  panels,
+  selectedPanelId,
+  onSelectPanel,
+}: {
+  panels: Panel[];
+  selectedPanelId: number | null;
+  onSelectPanel: (panel: Panel | null) => void;
+}) {
+  const sorted = useMemo(
+    () => [...panels].sort((a, b) => b.area_m2 - a.area_m2),
+    [panels]
+  );
+
+  if (panels.length === 0) {
+    return (
+      <div className="bg-surface border border-border rounded-lg p-8 text-center text-muted text-sm">
+        Dados individuais não disponíveis para esta imagem
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <p className="text-white font-medium text-sm">Painéis individuais</p>
+        <span className="text-muted text-xs">{panels.length} painéis · ordenados por área</span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-surface z-10">
+            <tr className="border-b border-border">
+              <th className="text-left px-4 py-2.5 text-muted font-medium w-14">#</th>
+              <th className="text-right px-4 py-2.5 text-muted font-medium">Área (m²)</th>
+              <th className="text-right px-4 py-2.5 text-muted font-medium">Geração (kWh/mês)</th>
+              <th className="px-4 py-2.5 text-muted font-medium w-48">Confiança</th>
+            </tr>
+          </thead>
+          <tbody className="max-h-96 overflow-y-auto">
+            {sorted.map((panel) => {
+              const isSelected = panel.panel_id === selectedPanelId;
+              const conf = panel.confidence_mean;
+              const barColor =
+                conf >= 0.8 ? "bg-green-500" : conf >= 0.5 ? "bg-yellow-500" : "bg-red-500";
+
+              return (
+                <tr
+                  key={panel.panel_id}
+                  onClick={() => onSelectPanel(panel)}
+                  className={`border-b border-border/40 cursor-pointer transition-colors ${
+                    isSelected ? "bg-primary/10" : "hover:bg-white/5"
+                  }`}
+                >
+                  <td className="px-4 py-2.5 font-mono text-slate-400">{panel.panel_id}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">
+                    {panel.area_m2.toFixed(4)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">
+                    {panel.kwh_month.toFixed(2)}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${barColor}`}
+                          style={{ width: `${conf * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-muted w-9 text-right tabular-nums">
+                        {(conf * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 function StatCard({ icon: Icon, label, value, color }: {
   icon: React.ElementType; label: string; value: string; color: string;
