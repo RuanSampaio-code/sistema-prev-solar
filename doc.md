@@ -107,24 +107,26 @@ results
 
 **Arquitetura:**
 - UNet com encoder ResNet34 (`segmentation_models_pytorch.Unet`)
-- Input: tensor RGB 512×512 (3 canais, normalização ImageNet)
-- Output: logits 1 canal → sigmoid → threshold 0.5 → máscara binária
+- Input: tiles RGB 640×640 (3 canais, normalização ImageNet)
+- Output: logits 1 canal → sigmoid → threshold 0.40 → máscara binária
 
 **Pipeline de inferência (`backend/ai/pipeline.py`):**
-1. Lê imagem com OpenCV → BGR→RGB → resize 512×512
-2. Normaliza com mean `[0.485, 0.456, 0.406]` e std `[0.229, 0.224, 0.225]`
-3. Converte para tensor PyTorch → modelo → sigmoid > 0.5 → máscara binária
-4. `cv2.findContours` com filtro mínimo de 200 px por contorno
-5. Calcula `detected_area_m2 = (pixels_painel / pixels_total) × 200`
-6. Calcula `kWh/mês = área × WP_PER_M2 × EFFICIENCY_FACTOR × DAILY_PEAK_SUN_HOURS × 30 / 1000`
-7. Salva máscara PNG em `uploads/mask_{uuid}.png`
-8. Retorna: `panel_count`, `detected_area_m2`, `estimated_kwh_month`, `mask_filepath`
+1. Lê imagem em **resolução nativa** com OpenCV (TIFFs via PIL para suporte a 16-bit/multi-banda)
+2. Lê o **GSD real** (metros/pixel) dos metadados do GeoTIFF via `rasterio`; converte graus→metros para CRS EPSG:4326; fallback de 0.30 m/px
+3. **Inferência por tiling:** tiles 640×640 com overlap de 128px; tiles sobrepostos combinados por média de probabilidades (suaviza artefatos de borda)
+4. Normaliza cada tile com mean `[0.485, 0.456, 0.406]` e std `[0.229, 0.224, 0.225]`
+5. Threshold 0.40 → máscara binária
+6. `cv2.findContours` com filtro mínimo de 10 px por contorno
+7. Calcula `detected_area_m2 = Σ(área_contorno_px × gsd²)` — fisicamente correto via GSD real
+8. Calcula `kWh/mês = área × IRRADIACAO_LOCAL × EFICIENCIA_MEDIA × (1 − PERDAS_SISTEMA) × 30`
+9. Salva máscara PNG em `uploads/mask_{stem_original}.png`
+10. Retorna: `panel_count`, `detected_area_m2`, `estimated_kwh_month`, `mask_filepath`
 
 **Constantes configuráveis via `.env`:**
 ```
-WP_PER_M2=160              # Watts-pico por m²
-EFFICIENCY_FACTOR=0.75
-DAILY_PEAK_SUN_HOURS=4.5
+IRRADIACAO_LOCAL=5.5    # kWh/m²/dia — São Luís-MA (média anual INMET)
+EFICIENCIA_MEDIA=0.18   # eficiência típica de painel fotovoltaico (18%)
+PERDAS_SISTEMA=0.14     # perdas por cabeamento, inversor, sujeira etc.
 ```
 
 ---
@@ -264,7 +266,7 @@ docker compose exec backend alembic revision --autogenerate -m "descrição"
 - **CPU-only PyTorch:** o Dockerfile instala `torch+cpu` para reduzir tamanho da imagem. Se GPU disponível, ajustar Dockerfile e `inference.py` (já suporta via `torch.cuda.is_available()`).
 - **Máscara salva em disco:** a máscara PNG gerada pelo UNet é persistida em `uploads/`, não no banco. O campo `mask_filepath` aponta para ela.
 - **Visualização on-demand:** o overlay amarelo+contornos é gerado em memória em cada request a `/visualization`, não pré-computado.
-- **Premissa de área:** 1 imagem de drone = cobertura de 200 m². O ratio de pixels painéis/total da imagem é aplicado sobre 200 m² para obter `detected_area_m2`. Isso é uma constante de negócio, não derivada da imagem.
+- **Área via GSD real:** a área detectada é calculada por `Σ(área_contorno_px × gsd²)`, onde o GSD (metros/pixel) é lido dos metadados do GeoTIFF via `rasterio`. Para CRS geográfico (EPSG:4326) o GSD em graus é convertido para metros. Fallback de 0.30 m/px quando os metadados estão ausentes ou o arquivo não é TIFF.
 
 ---
 
