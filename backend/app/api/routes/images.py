@@ -3,7 +3,7 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -34,11 +34,14 @@ def _validate_file(file: UploadFile):
 @router.post("/upload", response_model=list[ImageResponse], status_code=status.HTTP_202_ACCEPTED)
 async def upload_images(
     files: list[UploadFile] = File(...),
+    threshold: float = Form(0.40),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if len(files) > 10:
         raise HTTPException(status_code=400, detail="Máximo de 10 imagens por vez")
+    if not (0.0 < threshold < 1.0):
+        raise HTTPException(status_code=400, detail="threshold deve ser entre 0.0 e 1.0 (exclusivo)")
 
     results = []
     for file in files:
@@ -67,7 +70,7 @@ async def upload_images(
             file_size_kb=round(size_kb, 2),
         )
 
-        process_image_task.delay(image.id)
+        process_image_task.delay(image.id, threshold)
         results.append(image)
 
     return results

@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
-import { CloudUpload, X, Loader2, CheckCircle2 } from "lucide-react";
+import { CloudUpload, X, Loader2, CheckCircle2, Info } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,7 @@ interface FileItem {
 export default function UploadPage() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [threshold, setThreshold] = useState(0.40);
 
   const onDrop = useCallback((accepted: File[]) => {
     const newItems = accepted.map((file) => ({
@@ -54,6 +55,7 @@ export default function UploadPage() {
 
     const formData = new FormData();
     files.forEach((f) => formData.append("files", f.file));
+    formData.append("threshold", String(threshold));
 
     try {
       await api.post("/api/images/upload", formData, {
@@ -114,6 +116,57 @@ export default function UploadPage() {
             </div>
           </div>
         )}
+
+        {/* Threshold */}
+        <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <p className="text-white text-sm font-medium">Sensibilidade da detecção</p>
+            <div className="relative group">
+              <Info className="w-4 h-4 text-muted cursor-help" />
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 p-3 bg-zinc-900 border border-border rounded-md text-xs text-slate-300 leading-relaxed hidden group-hover:block z-20 pointer-events-none shadow-lg">
+                <p className="font-semibold text-white mb-1">Threshold de detecção</p>
+                <p>
+                  Probabilidade mínima para que um pixel seja classificado como painel solar
+                  pelo modelo UNet. Controla o equilíbrio entre sensibilidade e precisão:
+                </p>
+                <ul className="mt-2 space-y-1 list-disc list-inside">
+                  <li><span className="text-yellow-400">Valor baixo (0.2–0.35)</span> — detecta mais regiões, mas pode incluir falsos positivos</li>
+                  <li><span className="text-green-400">Valor padrão (0.40)</span> — equilibrado, recomendado para a maioria das imagens</li>
+                  <li><span className="text-blue-400">Valor alto (0.55–0.80)</span> — mais conservador, só detecta regiões com alta certeza</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min={0.10}
+              max={0.90}
+              step={0.05}
+              value={threshold}
+              onChange={(e) => setThreshold(Number(e.target.value))}
+              className="flex-1 accent-primary h-1.5 cursor-pointer"
+            />
+            <span className="text-white font-mono text-sm w-10 text-right tabular-nums">
+              {threshold.toFixed(2)}
+            </span>
+            {threshold !== 0.40 && (
+              <button
+                type="button"
+                onClick={() => setThreshold(0.40)}
+                className="text-xs text-muted hover:text-white transition-colors whitespace-nowrap"
+              >
+                Resetar
+              </button>
+            )}
+          </div>
+
+          <div className="flex justify-between text-xs text-muted">
+            <span>Mais sensível</span>
+            <span>Mais conservador</span>
+          </div>
+        </div>
 
         <button
           type="submit"

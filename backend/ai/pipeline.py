@@ -221,7 +221,7 @@ def _save_mask(mask: np.ndarray, original_filepath: str) -> str:
     return str(mask_path)
 
 
-def process_image(filepath: str) -> PipelineResult:
+def process_image(filepath: str, threshold: float = THRESHOLD) -> PipelineResult:
     # Carrega em resolução nativa — sem redimensionar
     img = _load_image(filepath)
 
@@ -230,7 +230,7 @@ def process_image(filepath: str) -> PipelineResult:
 
     # Tiling com overlap → mapa de probabilidades → threshold
     prob_map = _run_tiled_inference(img)
-    mask_bin = (prob_map > THRESHOLD).astype(np.uint8)
+    mask_bin = (prob_map > threshold).astype(np.uint8)
 
     contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     panels = _extract_panels(contours, prob_map, gsd)
