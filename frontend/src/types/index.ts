@@ -28,6 +28,7 @@ export interface Result {
   panel_count: number;
   detected_area_m2: number;
   estimated_kwh_month: number;
+  gsd_used_m_px: number | null;
   processed_at: string;
   panels?: Panel[];
 }

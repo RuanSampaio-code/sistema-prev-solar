@@ -35,9 +35,14 @@ def _build_visualization(image_path: str, mask_path: str, panel_count: int,
     overlay[mask_bin > 0] = (overlay[mask_bin > 0] * 0.4 + np.array([0, 200, 255]) * 0.6).astype(np.uint8)
     result_img = cv2.addWeighted(original, 0.3, overlay, 0.7, 0)
 
-    # contornos e labels por painel
+    # contornos e labels por painel — ordenados por área decrescente para coincidir
+    # com o panel_id do pipeline (maior painel = label "1")
     contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    valid = [c for c in contours if cv2.contourArea(c) >= 200]
+    valid = sorted(
+        [c for c in contours if cv2.contourArea(c) >= 200],
+        key=cv2.contourArea,
+        reverse=True,
+    )
 
     cv2.drawContours(result_img, valid, -1, (0, 255, 100), 2)
 

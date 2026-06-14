@@ -1,12 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { ImageRecord, PaginatedImages } from "@/types";
 import { formatDate } from "@/lib/utils";
-import { Search, ChevronLeft, ChevronRight, FileDown, Eye } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, FileDown, Eye, Trash2, Check, X } from "lucide-react";
+import { toast } from "sonner";
 import Link from "next/link";
+
+async function downloadXlsx(imageId?: number) {
+  const qs = imageId ? `?image_id=${imageId}` : "";
+  const response = await api.get(`/api/reports/xlsx${qs}`, { responseType: "blob" });
+  const url = URL.createObjectURL(new Blob([response.data], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `prevsolar_relatorio_${imageId ?? "completo"}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   pending:    { label: "Aguardando", color: "text-yellow-400 bg-yellow-400/10" },
@@ -27,6 +41,36 @@ export default function ResultsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [orderBy, setOrderBy] = useState("energy");
+  const [exportingId, setExportingId] = useState<number | "all" | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/api/images/${id}/delete`),
+    onSuccess: () => {
+      toast.success("Imagem deletada com sucesso");
+      setConfirmDeleteId(null);
+      queryClient.invalidateQueries({ queryKey: ["images"] });
+    },
+    onError: () => {
+      toast.error("Erro ao deletar imagem");
+      setConfirmDeleteId(null);
+    },
+  });
+
+  async function handleDownload(imageId?: number) {
+    const key = imageId ?? "all";
+    setExportingId(key);
+    try {
+      await downloadXlsx(imageId);
+      toast.success("Relatório exportado com sucesso");
+    } catch {
+      toast.error("Erro ao exportar relatório");
+    } finally {
+      setExportingId(null);
+    }
+  }
 
   const { data, isLoading } = useQuery<PaginatedImages>({
     queryKey: ["images", page, search, statusFilter, orderBy],
@@ -37,13 +81,6 @@ export default function ResultsPage() {
     refetchInterval: 10_000,
   });
 
-  function downloadCSV(imageId?: number) {
-    const url = imageId
-      ? `/api/reports/csv?image_id=${imageId}`
-      : "/api/reports/csv";
-    window.open(`${process.env.NEXT_PUBLIC_API_URL}${url}`, "_blank");
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -52,11 +89,12 @@ export default function ResultsPage() {
           <p className="text-muted text-sm mt-1">{data?.total ?? 0} registros encontrados</p>
         </div>
         <button
-          onClick={() => downloadCSV()}
-          className="flex items-center gap-2 bg-surface border border-border text-slate-300 px-4 py-2 rounded-md hover:border-primary hover:text-white transition-colors text-sm"
+          onClick={() => handleDownload()}
+          disabled={exportingId === "all"}
+          className="flex items-center gap-2 bg-surface border border-border text-slate-300 px-4 py-2 rounded-md hover:border-primary hover:text-white transition-colors text-sm disabled:opacity-60"
         >
           <FileDown className="w-4 h-4" />
-          Exportar tudo
+          {exportingId === "all" ? "Exportando..." : "Exportar tudo"}
         </button>
       </div>
 
@@ -137,11 +175,39 @@ export default function ResultsPage() {
                       </Link>
                       {img.status === "done" && (
                         <button
-                          onClick={() => downloadCSV(img.id)}
-                          className="text-muted hover:text-primary transition-colors"
-                          title="Exportar CSV"
+                          onClick={() => handleDownload(img.id)}
+                          disabled={exportingId === img.id}
+                          className="text-muted hover:text-primary transition-colors disabled:opacity-40"
+                          title="Exportar relatório XLSX"
                         >
                           <FileDown className="w-4 h-4" />
+                        </button>
+                      )}
+                      {confirmDeleteId === img.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => deleteMutation.mutate(img.id)}
+                            disabled={deleteMutation.isPending}
+                            className="p-0.5 text-red-400 hover:text-red-300 transition-colors disabled:opacity-40"
+                            title="Confirmar exclusão"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="p-0.5 text-muted hover:text-white transition-colors"
+                            title="Cancelar"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDeleteId(img.id)}
+                          className="text-muted hover:text-red-400 transition-colors"
+                          title="Deletar imagem"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       )}
                     </div>

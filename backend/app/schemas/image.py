@@ -22,6 +22,7 @@ class ResultSchema(BaseModel):
     panel_count: int
     detected_area_m2: float
     estimated_kwh_month: float
+    gsd_used_m_px: float | None = None
     processed_at: datetime
     panels: list[PanelResultSchema] | None = []
 

@@ -35,13 +35,21 @@ def _validate_file(file: UploadFile):
 async def upload_images(
     files: list[UploadFile] = File(...),
     threshold: float = Form(0.40),
+    model_name: str = Form("default"),
+    gsd_m_px: float | None = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from ai.inference import AVAILABLE_MODELS
+
     if len(files) > 10:
         raise HTTPException(status_code=400, detail="Máximo de 10 imagens por vez")
     if not (0.0 < threshold < 1.0):
         raise HTTPException(status_code=400, detail="threshold deve ser entre 0.0 e 1.0 (exclusivo)")
+    if model_name not in AVAILABLE_MODELS:
+        raise HTTPException(status_code=400, detail=f"Modelo inválido: '{model_name}'. Disponíveis: {AVAILABLE_MODELS}")
+    if gsd_m_px is not None and not (0.01 <= gsd_m_px <= 1.0):
+        raise HTTPException(status_code=400, detail="gsd_m_px deve estar entre 0.01 e 1.0 m/px (faixa típica para drones)")
 
     results = []
     for file in files:
@@ -70,7 +78,7 @@ async def upload_images(
             file_size_kb=round(size_kb, 2),
         )
 
-        process_image_task.delay(image.id, threshold)
+        process_image_task.delay(image.id, threshold, model_name, gsd_m_px)
         results.append(image)
 
     return results

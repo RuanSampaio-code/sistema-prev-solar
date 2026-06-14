@@ -149,6 +149,12 @@ export default function ResultDetailPage() {
                 <p className="text-slate-300">
                   {image.result?.processed_at ? formatDate(image.result.processed_at) : "—"}
                 </p>
+                <p className="text-muted font-medium mt-3">GSD usado</p>
+                <p className="text-slate-300 font-mono">
+                  {image.result?.gsd_used_m_px != null
+                    ? `${image.result.gsd_used_m_px.toFixed(4)} m/px`
+                    : "—"}
+                </p>
               </div>
 
               <a

@@ -8,14 +8,23 @@ import numpy as np
 import torch
 from PIL import Image as PILImage
 
-from ai.inference import predict_probs
+from ai.inference import AVAILABLE_MODELS, predict_probs
 from app.core.config import settings
 
-# ── Parâmetros de inferência (alinhados ao notebook de referência) ────────────
-TILE_SIZE = 640        # tamanho do tile — mesmo do notebook
-OVERLAP = 128          # sobreposição entre tiles; a média suaviza bordas
-THRESHOLD = 0.40       # probabilidade mínima para marcar pixel como painel
+# ── Parâmetros de inferência por modelo ───────────────────────────────────────
+# tile_size e overlap diferem entre modelos; threshold é o padrão quando não
+# fornecido pelo usuário. MIN_PANEL_PIXELS é comum a todos os modelos.
+_MODEL_INFERENCE_PARAMS: dict[str, dict] = {
+    "default": {"tile_size": 640, "overlap": 128, "default_threshold": 0.40},
+    "new":     {"tile_size": 512, "overlap": 300, "default_threshold": 0.30},
+}
+
 MIN_PANEL_PIXELS = 10  # área mínima de contorno para ser considerado painel
+
+# Mantidos para compatibilidade com imports externos
+TILE_SIZE = _MODEL_INFERENCE_PARAMS["default"]["tile_size"]
+OVERLAP   = _MODEL_INFERENCE_PARAMS["default"]["overlap"]
+THRESHOLD = _MODEL_INFERENCE_PARAMS["default"]["default_threshold"]
 
 # Normalização ImageNet — obrigatória para o encoder ResNet34
 _MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -43,6 +52,7 @@ class PipelineResult:
     estimated_kwh_month: float
     mask_filepath: str | None
     panels: List[PanelResult]
+    gsd_used_m_px: float = 0.0
 
 
 def _estimate_kwh(area_m2: float) -> float:
@@ -129,36 +139,40 @@ def _preprocess_tile(tile_bgr: np.ndarray) -> torch.Tensor:
     return torch.from_numpy(norm.transpose(2, 0, 1)).float().unsqueeze(0)
 
 
-def _run_tiled_inference(img: np.ndarray) -> np.ndarray:
+def _run_tiled_inference(img: np.ndarray, model_name: str = "default") -> np.ndarray:
     """Inferência tile a tile com overlap; combina predições por média.
 
     A abordagem de média é superior ao NMS para UNet: regiões sobrepostas
     acumulam mais predições, suavizando artefatos de borda automaticamente.
     Retorna mapa de probabilidades float32 (H, W) na resolução original.
     """
+    params = _MODEL_INFERENCE_PARAMS.get(model_name, _MODEL_INFERENCE_PARAMS["default"])
+    tile_size = params["tile_size"]
+    overlap   = params["overlap"]
+
     H, W = img.shape[:2]
     prob_acum = np.zeros((H, W), dtype=np.float32)
     count_acum = np.zeros((H, W), dtype=np.float32)
 
-    step = TILE_SIZE - OVERLAP
-    ys = sorted(set(list(range(0, max(1, H - TILE_SIZE + 1), step)) + [max(0, H - TILE_SIZE)]))
-    xs = sorted(set(list(range(0, max(1, W - TILE_SIZE + 1), step)) + [max(0, W - TILE_SIZE)]))
+    step = tile_size - overlap
+    ys = sorted(set(list(range(0, max(1, H - tile_size + 1), step)) + [max(0, H - tile_size)]))
+    xs = sorted(set(list(range(0, max(1, W - tile_size + 1), step)) + [max(0, W - tile_size)]))
 
     for y in ys:
         for x in xs:
-            tile = img[y:y + TILE_SIZE, x:x + TILE_SIZE]
+            tile = img[y:y + tile_size, x:x + tile_size]
             th, tw = tile.shape[:2]
 
-            # Padding para tiles de borda menores que TILE_SIZE
-            if th < TILE_SIZE or tw < TILE_SIZE:
-                padded = np.zeros((TILE_SIZE, TILE_SIZE, 3), dtype=np.uint8)
+            # Padding para tiles de borda menores que tile_size
+            if th < tile_size or tw < tile_size:
+                padded = np.zeros((tile_size, tile_size, 3), dtype=np.uint8)
                 padded[:th, :tw] = tile
                 tile_input = padded
             else:
                 tile_input = tile
 
             tensor = _preprocess_tile(tile_input)
-            prob = predict_probs(tensor)  # float32 (TILE_SIZE, TILE_SIZE)
+            prob = predict_probs(tensor, model_name)  # float32 (tile_size, tile_size)
 
             # Acumula apenas a região válida (sem padding)
             prob_acum[y:y + th, x:x + tw] += prob[:th, :tw]
@@ -169,9 +183,12 @@ def _run_tiled_inference(img: np.ndarray) -> np.ndarray:
 
 
 def _extract_panels(contours, prob_map: np.ndarray, gsd: float) -> List[PanelResult]:
-    """Converte contornos em PanelResult individuais com área, kWh, centroide, bbox e confiança."""
+    """Converte contornos em PanelResult individuais com área, kWh, centroide, bbox e confiança.
+
+    panel_id é atribuído por rank de área decrescente (maior painel = id 1) para
+    coincidir com a ordem exibida na tabela e com os rótulos do overlay de visualização.
+    """
     panels: List[PanelResult] = []
-    panel_id = 1
 
     for contour in contours:
         area_px = cv2.contourArea(contour)
@@ -197,7 +214,7 @@ def _extract_panels(contours, prob_map: np.ndarray, gsd: float) -> List[PanelRes
         conf_mean = round(float(pixels_inside.mean()), 4) if len(pixels_inside) > 0 else 0.0
 
         panels.append(PanelResult(
-            panel_id=panel_id,
+            panel_id=0,  # placeholder; atribuído por rank abaixo
             area_m2=area_m2,
             kwh_month=kwh_month,
             centroid_x=cx,
@@ -208,7 +225,11 @@ def _extract_panels(contours, prob_map: np.ndarray, gsd: float) -> List[PanelRes
             bbox_height=bh,
             confidence_mean=conf_mean,
         ))
-        panel_id += 1
+
+    # Ordena por área decrescente e atribui panel_id = rank (1 = maior)
+    panels.sort(key=lambda p: p.area_m2, reverse=True)
+    for rank, panel in enumerate(panels, 1):
+        panel.panel_id = rank
 
     return panels
 
@@ -221,15 +242,26 @@ def _save_mask(mask: np.ndarray, original_filepath: str) -> str:
     return str(mask_path)
 
 
-def process_image(filepath: str, threshold: float = THRESHOLD) -> PipelineResult:
+def process_image(
+    filepath: str,
+    threshold: float | None = None,
+    model_name: str = "default",
+    gsd_override: float | None = None,
+) -> PipelineResult:
+    if model_name not in AVAILABLE_MODELS:
+        raise ValueError(f"Modelo desconhecido: '{model_name}'. Disponíveis: {AVAILABLE_MODELS}")
+
+    if threshold is None:
+        threshold = _MODEL_INFERENCE_PARAMS.get(model_name, _MODEL_INFERENCE_PARAMS["default"])["default_threshold"]
+
     # Carrega em resolução nativa — sem redimensionar
     img = _load_image(filepath)
 
-    # GSD em metros/pixel (converte graus→metros se CRS for EPSG:4326)
-    gsd = _get_gsd(filepath)
+    # GSD em metros/pixel — override manual tem prioridade sobre metadado do arquivo
+    gsd = gsd_override if gsd_override is not None else _get_gsd(filepath)
 
     # Tiling com overlap → mapa de probabilidades → threshold
-    prob_map = _run_tiled_inference(img)
+    prob_map = _run_tiled_inference(img, model_name)
     mask_bin = (prob_map > threshold).astype(np.uint8)
 
     contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -245,4 +277,5 @@ def process_image(filepath: str, threshold: float = THRESHOLD) -> PipelineResult
         estimated_kwh_month=kwh,
         mask_filepath=mask_path,
         panels=panels,
+        gsd_used_m_px=round(gsd, 6),
     )

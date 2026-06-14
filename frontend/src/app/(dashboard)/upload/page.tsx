@@ -13,10 +13,46 @@ interface FileItem {
   status: "queued" | "uploading" | "done" | "error";
 }
 
+const MODEL_OPTIONS = [
+  {
+    value: "default",
+    label: "Modelo Padrão",
+    desc: "UNet ResNet34 — threshold 0.40, tiles 640 px",
+    defaultThreshold: 0.40,
+  },
+  {
+    value: "new",
+    label: "Novo Modelo",
+    desc: "UNet v2 — threshold 0.30, tiles 512 px",
+    defaultThreshold: 0.30,
+  },
+] as const;
+
+type ModelValue = (typeof MODEL_OPTIONS)[number]["value"];
+
+const MODEL_DEFAULT_THRESHOLD: Record<ModelValue, number> = {
+  default: 0.40,
+  new: 0.30,
+};
+
 export default function UploadPage() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [threshold, setThreshold] = useState(0.40);
+  const [model, setModel] = useState<ModelValue>("default");
+  const [threshold, setThreshold] = useState(MODEL_DEFAULT_THRESHOLD["default"]);
+  const [gsdInput, setGsdInput] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  function handleModelChange(value: ModelValue) {
+    setModel(value);
+    setThreshold(MODEL_DEFAULT_THRESHOLD[value]);
+  }
+
+  const gsdValue = gsdInput !== "" ? Number(gsdInput) : null;
+  const gsdError =
+    gsdValue !== null && (isNaN(gsdValue) || gsdValue < 0.01 || gsdValue > 1.0)
+      ? "Valor deve ser entre 0.01 e 1.0 m/px"
+      : null;
 
   const onDrop = useCallback((accepted: File[]) => {
     const newItems = accepted.map((file) => ({
@@ -53,9 +89,17 @@ export default function UploadPage() {
     }
     setUploading(true);
 
+    if (gsdError) {
+      toast.error(gsdError);
+      setUploading(false);
+      return;
+    }
+
     const formData = new FormData();
     files.forEach((f) => formData.append("files", f.file));
     formData.append("threshold", String(threshold));
+    formData.append("model_name", model);
+    if (gsdValue !== null) formData.append("gsd_m_px", String(gsdValue));
 
     try {
       await api.post("/api/images/upload", formData, {
@@ -117,6 +161,29 @@ export default function UploadPage() {
           </div>
         )}
 
+        {/* Modelo */}
+        <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
+          <p className="text-white text-sm font-medium">Modelo de detecção</p>
+          <div className="grid grid-cols-2 gap-3">
+            {MODEL_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => handleModelChange(opt.value)}
+                className={cn(
+                  "text-left p-3 rounded-md border transition-colors",
+                  model === opt.value
+                    ? "border-primary bg-primary/10 text-white"
+                    : "border-border text-slate-400 hover:border-primary/50"
+                )}
+              >
+                <p className="text-sm font-medium">{opt.label}</p>
+                <p className="text-xs text-muted mt-0.5">{opt.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Threshold */}
         <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-2">
@@ -151,10 +218,10 @@ export default function UploadPage() {
             <span className="text-white font-mono text-sm w-10 text-right tabular-nums">
               {threshold.toFixed(2)}
             </span>
-            {threshold !== 0.40 && (
+            {threshold !== MODEL_DEFAULT_THRESHOLD[model] && (
               <button
                 type="button"
-                onClick={() => setThreshold(0.40)}
+                onClick={() => setThreshold(MODEL_DEFAULT_THRESHOLD[model])}
                 className="text-xs text-muted hover:text-white transition-colors whitespace-nowrap"
               >
                 Resetar
@@ -168,9 +235,61 @@ export default function UploadPage() {
           </div>
         </div>
 
+        {/* Configurações avançadas */}
+        <div className="border border-border rounded-lg overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            <span>Configurações avançadas</span>
+            <span className="text-xs">{showAdvanced ? "▲" : "▼"}</span>
+          </button>
+
+          {showAdvanced && (
+            <div className="px-4 pb-4 pt-1 bg-surface space-y-3 border-t border-border">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <p className="text-white text-sm font-medium">GSD (m/px)</p>
+                  <div className="relative group">
+                    <Info className="w-4 h-4 text-muted cursor-help" />
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 p-3 bg-zinc-900 border border-border rounded-md text-xs text-slate-300 leading-relaxed hidden group-hover:block z-20 pointer-events-none shadow-lg">
+                      <p className="font-semibold text-white mb-1">Resolução do terreno (GSD)</p>
+                      <p>
+                        Metros por pixel da imagem. Usado para converter pixels detectados em área real (m²).
+                        Quando vazio, o sistema lê automaticamente dos metadados do GeoTIFF.
+                      </p>
+                      <p className="mt-2 text-yellow-400">
+                        Use este campo se a área calculada parecer incorreta — o metadado do arquivo pode diferir da resolução física real do voo.
+                      </p>
+                      <p className="mt-2 text-slate-400">Faixa típica para drones: 0.02 – 0.30 m/px</p>
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="number"
+                  step="0.001"
+                  min="0.01"
+                  max="1.0"
+                  placeholder="Ex: 0.0523 — deixe vazio para detectar automaticamente"
+                  value={gsdInput}
+                  onChange={(e) => setGsdInput(e.target.value)}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-white placeholder:text-muted focus:outline-none focus:border-primary"
+                />
+                {gsdError && <p className="text-xs text-red-400">{gsdError}</p>}
+                {gsdValue !== null && !gsdError && (
+                  <p className="text-xs text-muted">
+                    Área = pixels × {gsdValue}² m/px · override ativo
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         <button
           type="submit"
-          disabled={uploading || files.length === 0}
+          disabled={uploading || files.length === 0 || !!gsdError}
           className="flex items-center gap-2 bg-primary text-black font-semibold px-6 py-2.5 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
