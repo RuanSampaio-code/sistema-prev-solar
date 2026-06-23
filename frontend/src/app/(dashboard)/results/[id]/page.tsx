@@ -8,6 +8,12 @@ import { formatDate } from "@/lib/utils";
 import type { ImageRecord, Panel } from "@/types";
 import { ArrowLeft, Zap, ScanLine, SquareStack, FileDown, Loader2, Trash2, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 
+const MODEL_LABELS: Record<string, string> = {
+  default: "UNet Padrão (ResNet34)",
+  new: "UNet v2",
+  yolo: "YOLO v11",
+};
+
 export default function ResultDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -148,6 +154,10 @@ export default function ResultDetailPage() {
                 <p className="text-muted font-medium mt-3">Processado em</p>
                 <p className="text-slate-300">
                   {image.result?.processed_at ? formatDate(image.result.processed_at) : "—"}
+                </p>
+                <p className="text-muted font-medium mt-3">Modelo usado</p>
+                <p className="text-slate-300">
+                  {MODEL_LABELS[image.result?.model_name ?? ""] ?? "—"}
                 </p>
                 <p className="text-muted font-medium mt-3">GSD usado</p>
                 <p className="text-slate-300 font-mono">

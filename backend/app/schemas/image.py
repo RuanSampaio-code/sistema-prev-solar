@@ -19,6 +19,7 @@ class PanelResultSchema(BaseModel):
 
 class ResultSchema(BaseModel):
     id: int
+    model_name: str | None = None
     panel_count: int
     detected_area_m2: float
     estimated_kwh_month: float

@@ -25,6 +25,7 @@ export interface Panel {
 
 export interface Result {
   id: number;
+  model_name: string | null;
   panel_count: number;
   detected_area_m2: number;
   estimated_kwh_month: number;

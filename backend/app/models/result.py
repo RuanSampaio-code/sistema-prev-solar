@@ -15,6 +15,7 @@ class Result(Base):
     panel_count: Mapped[int] = mapped_column(Integer, nullable=False)
     detected_area_m2: Mapped[float] = mapped_column(Float, nullable=False)
     estimated_kwh_month: Mapped[float] = mapped_column(Float, nullable=False)
+    model_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
     gsd_used_m_px: Mapped[float | None] = mapped_column(Float, nullable=True)
     mask_filepath: Mapped[str | None] = mapped_column(String(500), nullable=True)
     panels: Mapped[list | None] = mapped_column(JSON, nullable=True)

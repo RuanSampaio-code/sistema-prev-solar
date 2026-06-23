@@ -248,6 +248,12 @@ def process_image(
     model_name: str = "default",
     gsd_override: float | None = None,
 ) -> PipelineResult:
+    # YOLO usa um pipeline completamente diferente — delega sem modificar o fluxo UNet
+    if model_name == "yolo":
+        from ai.yolo_pipeline import process_image_yolo
+        conf = threshold if threshold is not None else 0.30
+        return process_image_yolo(filepath, conf=conf, gsd_override=gsd_override)
+
     if model_name not in AVAILABLE_MODELS:
         raise ValueError(f"Modelo desconhecido: '{model_name}'. Disponíveis: {AVAILABLE_MODELS}")
 

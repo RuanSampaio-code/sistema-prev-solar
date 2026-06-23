@@ -22,8 +22,14 @@ const MODEL_OPTIONS = [
   },
   {
     value: "new",
-    label: "Novo Modelo",
+    label: "Novo Modelo UNet",
     desc: "UNet v2 — threshold 0.30, tiles 512 px",
+    defaultThreshold: 0.30,
+  },
+  {
+    value: "yolo",
+    label: "YOLO v11",
+    desc: "YOLOv11m — detecção por instância, conf 0.30",
     defaultThreshold: 0.30,
   },
 ] as const;
@@ -33,6 +39,7 @@ type ModelValue = (typeof MODEL_OPTIONS)[number]["value"];
 const MODEL_DEFAULT_THRESHOLD: Record<ModelValue, number> = {
   default: 0.40,
   new: 0.30,
+  yolo: 0.30,
 };
 
 export default function UploadPage() {
@@ -193,12 +200,12 @@ export default function UploadPage() {
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 p-3 bg-zinc-900 border border-border rounded-md text-xs text-slate-300 leading-relaxed hidden group-hover:block z-20 pointer-events-none shadow-lg">
                 <p className="font-semibold text-white mb-1">Threshold de detecção</p>
                 <p>
-                  Probabilidade mínima para que um pixel seja classificado como painel solar
-                  pelo modelo UNet. Controla o equilíbrio entre sensibilidade e precisão:
+                  Para modelos UNet: probabilidade mínima por pixel. Para YOLO: confiança mínima
+                  por instância detectada. Controla o equilíbrio entre sensibilidade e precisão:
                 </p>
                 <ul className="mt-2 space-y-1 list-disc list-inside">
                   <li><span className="text-yellow-400">Valor baixo (0.2–0.35)</span> — detecta mais regiões, mas pode incluir falsos positivos</li>
-                  <li><span className="text-green-400">Valor padrão (0.40)</span> — equilibrado, recomendado para a maioria das imagens</li>
+                  <li><span className="text-green-400">Valor padrão (0.30–0.40)</span> — equilibrado, recomendado para a maioria das imagens</li>
                   <li><span className="text-blue-400">Valor alto (0.55–0.80)</span> — mais conservador, só detecta regiões com alta certeza</li>
                 </ul>
               </div>

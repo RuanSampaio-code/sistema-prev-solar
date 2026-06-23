@@ -8,13 +8,16 @@ _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 _MODEL_DIR = Path(__file__).parent / "model"
 
-# Registro de modelos disponíveis: nome → arquivo .pth
+# Registro de modelos UNet disponíveis: nome → arquivo .pth
 MODEL_REGISTRY: dict[str, Path] = {
     "default": _MODEL_DIR / "Model-unet.pth",
     "new": _MODEL_DIR / "NewModelUnet.pth",
 }
 
-AVAILABLE_MODELS: list[str] = list(MODEL_REGISTRY)
+# Modelos YOLO — carregados por yolo_pipeline.py, listados aqui para validação de AVAILABLE_MODELS
+_YOLO_MODELS: set[str] = {"yolo"}
+
+AVAILABLE_MODELS: list[str] = list(MODEL_REGISTRY) + sorted(_YOLO_MODELS)
 
 _model_cache: dict[str, object] = {}
 

@@ -39,6 +39,7 @@ def process_image_task(
 
         result = Result(
             image_id=image_id,
+            model_name=model_name,
             panel_count=pipeline_result.panel_count,
             detected_area_m2=pipeline_result.detected_area_m2,
             estimated_kwh_month=pipeline_result.estimated_kwh_month,
