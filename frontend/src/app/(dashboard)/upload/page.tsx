@@ -15,14 +15,8 @@ interface FileItem {
 
 const MODEL_OPTIONS = [
   {
-    value: "default",
-    label: "Modelo Padrão",
-    desc: "UNet ResNet34 — threshold 0.40, tiles 640 px",
-    defaultThreshold: 0.40,
-  },
-  {
     value: "new",
-    label: "Novo Modelo UNet",
+    label: "UNet v2",
     desc: "UNet v2 — threshold 0.30, tiles 512 px",
     defaultThreshold: 0.30,
   },
@@ -37,7 +31,6 @@ const MODEL_OPTIONS = [
 type ModelValue = (typeof MODEL_OPTIONS)[number]["value"];
 
 const MODEL_DEFAULT_THRESHOLD: Record<ModelValue, number> = {
-  default: 0.40,
   new: 0.30,
   yolo: 0.30,
 };
@@ -45,8 +38,8 @@ const MODEL_DEFAULT_THRESHOLD: Record<ModelValue, number> = {
 export default function UploadPage() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [model, setModel] = useState<ModelValue>("default");
-  const [threshold, setThreshold] = useState(MODEL_DEFAULT_THRESHOLD["default"]);
+  const [model, setModel] = useState<ModelValue>("new");
+  const [threshold, setThreshold] = useState(MODEL_DEFAULT_THRESHOLD["new"]);
   const [gsdInput, setGsdInput] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
 

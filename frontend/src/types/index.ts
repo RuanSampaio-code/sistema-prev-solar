@@ -6,6 +6,7 @@ export interface User {
   email: string;
   role: UserRole;
   is_active: boolean;
+  created_at?: string;
 }
 
 export type ImageStatus = "pending" | "processing" | "done" | "error";
