@@ -236,11 +236,14 @@ export default function UploadPage() {
         </div>
 
         {/* Configurações avançadas */}
-        <div className="border border-border rounded-lg overflow-hidden">
+        <div className="border border-border rounded-lg">
           <button
             type="button"
             onClick={() => setShowAdvanced((v) => !v)}
-            className="w-full flex items-center justify-between px-4 py-3 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+            className={cn(
+              "w-full flex items-center justify-between px-4 py-3 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors",
+              showAdvanced ? "rounded-t-lg" : "rounded-lg"
+            )}
           >
             <span>Configurações avançadas</span>
             <span className="text-xs">{showAdvanced ? "▲" : "▼"}</span>
@@ -253,7 +256,7 @@ export default function UploadPage() {
                   <p className="text-white text-sm font-medium">GSD (m/px)</p>
                   <div className="relative group">
                     <Info className="w-4 h-4 text-muted cursor-help" />
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 p-3 bg-zinc-900 border border-border rounded-md text-xs text-slate-300 leading-relaxed hidden group-hover:block z-20 pointer-events-none shadow-lg">
+                    <div className="absolute bottom-full left-0 mb-2 w-80 p-3 bg-zinc-900 border border-border rounded-md text-xs text-slate-300 leading-relaxed hidden group-hover:block z-20 pointer-events-none shadow-lg">
                       <p className="font-semibold text-white mb-1">GSD — Ground Sample Distance</p>
                       <p>
                         Distância real em metros coberta por cada pixel da imagem. Usado para converter
