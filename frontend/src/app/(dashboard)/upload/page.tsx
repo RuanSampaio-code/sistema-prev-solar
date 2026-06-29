@@ -134,7 +134,7 @@ export default function UploadPage() {
           <p className="text-slate-300 font-medium">
             {isDragActive ? "Solte as imagens aqui" : "Arraste imagens ou clique para selecionar"}
           </p>
-          <p className="text-muted text-xs mt-1">PNG, JPG, TIFF — máximo 10 arquivos, 200MB no total</p>
+          <p className="text-muted text-xs mt-1">PNG, JPG, TIFF — 1 arquivo, 200MB no total</p>
         </div>
 
         {files.length > 0 && (
@@ -254,15 +254,19 @@ export default function UploadPage() {
                   <div className="relative group">
                     <Info className="w-4 h-4 text-muted cursor-help" />
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 p-3 bg-zinc-900 border border-border rounded-md text-xs text-slate-300 leading-relaxed hidden group-hover:block z-20 pointer-events-none shadow-lg">
-                      <p className="font-semibold text-white mb-1">Resolução do terreno (GSD)</p>
+                      <p className="font-semibold text-white mb-1">GSD — Ground Sample Distance</p>
                       <p>
-                        Metros por pixel da imagem. Usado para converter pixels detectados em área real (m²).
-                        Quando vazio, o sistema lê automaticamente dos metadados do GeoTIFF.
+                        Distância real em metros coberta por cada pixel da imagem. Usado para converter
+                        pixels detectados em área real (m²) e calcular a estimativa de geração de energia.
+                      </p>
+                      <p className="mt-2">
+                        Quando vazio, o sistema lê automaticamente dos metadados do GeoTIFF (recomendado).
                       </p>
                       <p className="mt-2 text-yellow-400">
-                        Use este campo se a área calculada parecer incorreta — o metadado do arquivo pode diferir da resolução física real do voo.
+                        Preencha manualmente se a área calculada parecer incorreta — o metadado do arquivo
+                        pode não refletir a resolução real da imagem.
                       </p>
-                      <p className="mt-2 text-slate-400">Faixa típica para drones: 0.02 – 0.30 m/px</p>
+                      <p className="mt-2 text-slate-400">Faixa típica para satélites: 0.30 – 3.0 m/px</p>
                     </div>
                   </div>
                 </div>
