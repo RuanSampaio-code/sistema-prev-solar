@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import type { ImageRecord, Panel } from "@/types";
 import { ArrowLeft, Zap, ScanLine, SquareStack, FileDown, Loader2, Trash2, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { toast } from "sonner";
 
 const MODEL_LABELS: Record<string, string> = {
   default: "UNet Padrão (ResNet34)",
@@ -24,12 +25,10 @@ export default function ResultDetailPage() {
   const { data: image, isLoading } = useQuery<ImageRecord>({
     queryKey: ["image", id],
     queryFn: () => api.get(`/api/images/${id}`).then((r) => r.data),
-    refetchInterval: (data) => (data?.status === "done" ? false : 5000),
+    refetchInterval: (query) => (query.state.data?.status === "done" ? false : 5000),
   });
 
-  useEffect(() => {
-    setSelectedPanel(null);
-  }, [id]);
+  useEffect(() => { setSelectedPanel(null); }, [id]);
 
   const deleteMutation = useMutation({
     mutationFn: () => api.post(`/api/images/${id}/delete`),
@@ -38,6 +37,23 @@ export default function ResultDetailPage() {
       router.push("/dashboard");
     },
   });
+
+  async function handleExport() {
+    try {
+      const res = await api.get(`/api/reports/xlsx?image_id=${id}`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `prevsolar_relatorio_${id}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Relatório exportado");
+    } catch {
+      toast.error("Erro ao exportar relatório");
+    }
+  }
 
   if (isLoading) {
     return (
@@ -55,10 +71,7 @@ export default function ResultDetailPage() {
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            className="text-muted hover:text-white transition-colors"
-          >
+          <button onClick={() => router.back()} className="text-muted hover:text-white transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
@@ -112,39 +125,27 @@ export default function ResultDetailPage() {
       ) : (
         <>
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-
-            {/* imagem processada */}
             <div className="xl:col-span-2 bg-surface border border-border rounded-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-border">
-                <p className="text-white font-medium text-sm">Resultado da análise — painéis destacados</p>
+                <p className="text-white font-medium text-sm">
+                  Resultado da análise — passe o mouse sobre um painel para detalhes
+                </p>
               </div>
               <VizImage
                 imageId={id}
+                panels={panels}
                 selectedPanel={selectedPanel}
                 onClearSelection={() => setSelectedPanel(null)}
+                onSelectPanel={(p) =>
+                  setSelectedPanel((prev) => (prev?.panel_id === p.panel_id ? null : p))
+                }
               />
             </div>
 
-            {/* stats */}
             <div className="space-y-4">
-              <StatCard
-                icon={SquareStack}
-                label="Painéis detectados"
-                value={String(image.result?.panel_count ?? 0)}
-                color="bg-yellow-500"
-              />
-              <StatCard
-                icon={ScanLine}
-                label="Área estimada"
-                value={`${image.result?.detected_area_m2?.toFixed(2) ?? "0"} m²`}
-                color="bg-blue-600"
-              />
-              <StatCard
-                icon={Zap}
-                label="Potencial energético"
-                value={`${image.result?.estimated_kwh_month?.toFixed(1) ?? "0"} kWh/mês`}
-                color="bg-primary"
-              />
+              <StatCard icon={SquareStack} label="Painéis detectados" value={String(image.result?.panel_count ?? 0)} color="bg-yellow-500" />
+              <StatCard icon={ScanLine} label="Área estimada" value={`${image.result?.detected_area_m2?.toFixed(2) ?? "0"} m²`} color="bg-blue-600" />
+              <StatCard icon={Zap} label="Potencial energético" value={`${image.result?.estimated_kwh_month?.toFixed(1) ?? "0"} kWh/mês`} color="bg-primary" />
 
               <div className="bg-surface border border-border rounded-lg p-4 space-y-2 text-sm">
                 <p className="text-muted font-medium">Arquivo</p>
@@ -152,29 +153,22 @@ export default function ResultDetailPage() {
                 <p className="text-muted font-medium mt-3">Tamanho</p>
                 <p className="text-slate-300">{(image.file_size_kb / 1024).toFixed(1)} MB</p>
                 <p className="text-muted font-medium mt-3">Processado em</p>
-                <p className="text-slate-300">
-                  {image.result?.processed_at ? formatDate(image.result.processed_at) : "—"}
-                </p>
+                <p className="text-slate-300">{image.result?.processed_at ? formatDate(image.result.processed_at) : "—"}</p>
                 <p className="text-muted font-medium mt-3">Modelo usado</p>
-                <p className="text-slate-300">
-                  {MODEL_LABELS[image.result?.model_name ?? ""] ?? "—"}
-                </p>
+                <p className="text-slate-300">{MODEL_LABELS[image.result?.model_name ?? ""] ?? "—"}</p>
                 <p className="text-muted font-medium mt-3">GSD usado</p>
                 <p className="text-slate-300 font-mono">
-                  {image.result?.gsd_used_m_px != null
-                    ? `${image.result.gsd_used_m_px.toFixed(4)} m/px`
-                    : "—"}
+                  {image.result?.gsd_used_m_px != null ? `${image.result.gsd_used_m_px.toFixed(4)} m/px` : "—"}
                 </p>
               </div>
 
-              <a
-                href={`${process.env.NEXT_PUBLIC_API_URL}/api/reports/csv?image_id=${id}`}
-                target="_blank"
+              <button
+                onClick={handleExport}
                 className="flex items-center justify-center gap-2 w-full bg-surface border border-border text-slate-300 px-4 py-2.5 rounded-md hover:border-primary hover:text-white transition-colors text-sm"
               >
                 <FileDown className="w-4 h-4" />
-                Exportar CSV
-              </a>
+                Exportar Excel
+              </button>
             </div>
           </div>
 
@@ -192,7 +186,7 @@ export default function ResultDetailPage() {
 }
 
 // ---------------------------------------------------------------------------
-// VizImage — viewport com zoom/pan + canvas overlay para painel selecionado
+// VizImage — viewport com zoom/pan + canvas overlay + hover tooltip
 // ---------------------------------------------------------------------------
 
 const ZOOM_MIN = 1;
@@ -201,12 +195,16 @@ const ZOOM_STEP = 0.3;
 
 function VizImage({
   imageId,
+  panels,
   selectedPanel,
   onClearSelection,
+  onSelectPanel,
 }: {
   imageId: string;
+  panels: Panel[];
   selectedPanel: Panel | null;
   onClearSelection: () => void;
+  onSelectPanel: (panel: Panel) => void;
 }) {
   const { data: url, isLoading, isError } = useQuery<string>({
     queryKey: ["viz", imageId],
@@ -231,12 +229,19 @@ function VizImage({
   const containerRef = useRef<HTMLDivElement>(null);
   const lastPos = useRef({ x: 0, y: 0 });
   const wasDragged = useRef(false);
-
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // hover tooltip state
+  const [hoveredPanel, setHoveredPanel] = useState<Panel | null>(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
+
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { panRef.current = pan; }, [pan]);
+
+  // clear hover when dragging starts
+  useEffect(() => { if (isDragging) setHoveredPanel(null); }, [isDragging]);
 
   const clamp = (z: number, px: number, py: number) => {
     const el = containerRef.current;
@@ -324,7 +329,7 @@ function VizImage({
     applyZoom(next, cx, cy);
   };
 
-  const drawPanel = useCallback(() => {
+  const drawOverlay = useCallback(() => {
     const canvas = canvasRef.current;
     const img = imgRef.current;
     if (!canvas || !img || img.naturalWidth === 0) return;
@@ -335,33 +340,49 @@ function VizImage({
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!selectedPanel) return;
-
     const sx = img.offsetWidth / img.naturalWidth;
     const sy = img.offsetHeight / img.naturalHeight;
-    const { bbox_x: bx, bbox_y: by, bbox_width: bw, bbox_height: bh, panel_id } = selectedPanel;
 
-    const rx = bx * sx;
-    const ry = by * sy;
-    const rw = bw * sx;
-    const rh = bh * sy;
+    function drawRect(panel: Panel, strokeColor: string, lineWidth: number, glowColor?: string) {
+      const { bbox_x: bx, bbox_y: by, bbox_width: bw, bbox_height: bh, panel_id } = panel;
+      const rx = bx * sx;
+      const ry = by * sy;
+      const rw = bw * sx;
+      const rh = bh * sy;
 
-    ctx.strokeStyle = "#facc15";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(rx, ry, rw, rh);
+      if (glowColor) {
+        ctx!.save();
+        ctx!.shadowColor = glowColor;
+        ctx!.shadowBlur = 8;
+        ctx!.strokeStyle = glowColor;
+        ctx!.lineWidth = lineWidth + 2;
+        ctx!.strokeRect(rx, ry, rw, rh);
+        ctx!.restore();
+      }
 
-    const label = `#${panel_id}`;
-    ctx.font = "bold 10px monospace";
-    const tw = ctx.measureText(label).width;
-    const lx = rx;
-    const ly = ry;
-    ctx.fillStyle = "rgba(0,0,0,0.75)";
-    ctx.fillRect(lx, Math.max(0, ly - 14), tw + 6, 14);
-    ctx.fillStyle = "#facc15";
-    ctx.fillText(label, lx + 3, Math.max(11, ly - 3));
-  }, [selectedPanel]);
+      ctx!.strokeStyle = strokeColor;
+      ctx!.lineWidth = lineWidth;
+      ctx!.strokeRect(rx, ry, rw, rh);
 
-  useEffect(() => { drawPanel(); }, [drawPanel]);
+      const label = `#${panel_id}`;
+      ctx!.font = "bold 10px monospace";
+      const tw = ctx!.measureText(label).width;
+      ctx!.fillStyle = "rgba(0,0,0,0.75)";
+      ctx!.fillRect(rx, Math.max(0, ry - 14), tw + 6, 14);
+      ctx!.fillStyle = strokeColor;
+      ctx!.fillText(label, rx + 3, Math.max(11, ry - 3));
+    }
+
+    // draw hovered first (underneath), then selected on top
+    if (hoveredPanel && hoveredPanel.panel_id !== selectedPanel?.panel_id) {
+      drawRect(hoveredPanel, "#ffffff", 1.5, "rgba(255,255,255,0.4)");
+    }
+    if (selectedPanel) {
+      drawRect(selectedPanel, "#facc15", 2.5, "rgba(250,204,21,0.5)");
+    }
+  }, [selectedPanel, hoveredPanel]);
+
+  useEffect(() => { drawOverlay(); }, [drawOverlay]);
 
   if (isLoading) {
     return (
@@ -386,18 +407,14 @@ function VizImage({
       <div
         ref={containerRef}
         className="overflow-hidden"
-        style={{
-          maxHeight: 520,
-          cursor: isDragging ? "grabbing" : isZoomed ? "grab" : "default",
-        }}
+        style={{ maxHeight: 520, cursor: isDragging ? "grabbing" : isZoomed ? "grab" : "default" }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={() => { handleMouseUp(); setHoveredPanel(null); }}
         onClick={handleClick}
         onDoubleClick={reset}
       >
-        {/* wrapper compartilha o transform entre img e canvas */}
         <div
           style={{
             position: "relative",
@@ -412,21 +429,45 @@ function VizImage({
             alt="Resultado da análise"
             draggable={false}
             style={{ width: "100%", display: "block" }}
-            onLoad={drawPanel}
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+              drawOverlay();
+            }}
           />
           <canvas
             ref={canvasRef}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              height: "100%",
-              pointerEvents: "none",
-            }}
+            style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}
           />
+
+          {/* hit areas — invisíveis, posicionados em % sobre cada painel */}
+          {naturalSize.w > 0 && !isDragging && panels.map((panel) => (
+            <div
+              key={panel.panel_id}
+              style={{
+                position: "absolute",
+                left: `${(panel.bbox_x / naturalSize.w) * 100}%`,
+                top: `${(panel.bbox_y / naturalSize.h) * 100}%`,
+                width: `${(panel.bbox_width / naturalSize.w) * 100}%`,
+                height: `${(panel.bbox_height / naturalSize.h) * 100}%`,
+                cursor: "crosshair",
+              }}
+              onMouseEnter={() => setHoveredPanel(panel)}
+              onMouseMove={(e) => {
+                e.stopPropagation();
+                setTooltipPos({ x: e.clientX, y: e.clientY });
+              }}
+              onMouseLeave={() => setHoveredPanel(null)}
+              onClick={(e) => { e.stopPropagation(); onSelectPanel(panel); }}
+            />
+          ))}
         </div>
       </div>
+
+      {/* tooltip — fixed para não ser afetado pelo transform de zoom/pan */}
+      {hoveredPanel && (
+        <PanelTooltip panel={hoveredPanel} x={tooltipPos.x} y={tooltipPos.y} />
+      )}
 
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/70 backdrop-blur-sm rounded-full px-3 py-1.5 border border-white/10 z-10">
         <button
@@ -437,11 +478,9 @@ function VizImage({
         >
           <ZoomOut className="w-4 h-4" />
         </button>
-
         <span className="text-xs text-slate-300 w-12 text-center tabular-nums">
           {Math.round(zoom * 100)}%
         </span>
-
         <button
           onClick={(e) => { e.stopPropagation(); zoomIn(); }}
           disabled={zoom >= ZOOM_MAX}
@@ -450,13 +489,12 @@ function VizImage({
         >
           <ZoomIn className="w-4 h-4" />
         </button>
-
         {isZoomed && (
           <>
             <div className="w-px h-4 bg-white/20 mx-1" />
             <button
               onClick={(e) => { e.stopPropagation(); reset(); }}
-              title="Resetar zoom (duplo clique)"
+              title="Resetar zoom"
               className="p-1 rounded-full text-slate-300 hover:text-white transition-colors"
             >
               <Maximize2 className="w-4 h-4" />
@@ -475,7 +513,43 @@ function VizImage({
 }
 
 // ---------------------------------------------------------------------------
-// PanelsTable — tabela de painéis individuais com destaque interativo
+// PanelTooltip — tooltip fixed que segue o cursor
+// ---------------------------------------------------------------------------
+
+function PanelTooltip({ panel, x, y }: { panel: Panel; x: number; y: number }) {
+  const OFFSET = 16;
+  const W = 200;
+
+  const left = x + OFFSET + W > window.innerWidth ? x - W - OFFSET : x + OFFSET;
+  const top = y - 10;
+
+  return (
+    <div
+      style={{ position: "fixed", left, top, width: W, zIndex: 9999, pointerEvents: "none" }}
+      className="bg-gray-900/95 border border-white/15 rounded-lg px-3 py-2.5 shadow-xl backdrop-blur-sm"
+    >
+      <p className="text-xs font-bold text-primary mb-1.5">Painel #{panel.panel_id}</p>
+      <div className="space-y-1 text-xs">
+        <div className="flex justify-between">
+          <span className="text-slate-400">Área</span>
+          <span className="text-white font-mono">{panel.area_m2.toFixed(4)} m²</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Geração</span>
+          <span className="text-white font-mono">{panel.kwh_month.toFixed(2)} kWh/mês</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Confiança</span>
+          <span className="text-white font-mono">{(panel.confidence_mean * 100).toFixed(0)}%</span>
+        </div>
+      </div>
+      <p className="text-[10px] text-slate-500 mt-2">Clique para destacar na tabela</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PanelsTable
 // ---------------------------------------------------------------------------
 
 function PanelsTable({
@@ -487,10 +561,7 @@ function PanelsTable({
   selectedPanelId: number | null;
   onSelectPanel: (panel: Panel | null) => void;
 }) {
-  const sorted = useMemo(
-    () => [...panels].sort((a, b) => b.area_m2 - a.area_m2),
-    [panels]
-  );
+  const sorted = useMemo(() => [...panels].sort((a, b) => b.area_m2 - a.area_m2), [panels]);
 
   if (panels.length === 0) {
     return (
@@ -506,7 +577,6 @@ function PanelsTable({
         <p className="text-white font-medium text-sm">Painéis individuais</p>
         <span className="text-muted text-xs">{panels.length} painéis · ordenados por área</span>
       </div>
-
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-surface z-10">
@@ -517,13 +587,11 @@ function PanelsTable({
               <th className="px-4 py-2.5 text-muted font-medium w-48">Confiança</th>
             </tr>
           </thead>
-          <tbody className="max-h-96 overflow-y-auto">
+          <tbody>
             {sorted.map((panel) => {
               const isSelected = panel.panel_id === selectedPanelId;
               const conf = panel.confidence_mean;
-              const barColor =
-                conf >= 0.8 ? "bg-green-500" : conf >= 0.5 ? "bg-yellow-500" : "bg-red-500";
-
+              const barColor = conf >= 0.8 ? "bg-green-500" : conf >= 0.5 ? "bg-yellow-500" : "bg-red-500";
               return (
                 <tr
                   key={panel.panel_id}
@@ -533,23 +601,14 @@ function PanelsTable({
                   }`}
                 >
                   <td className="px-4 py-2.5 font-mono text-slate-400">{panel.panel_id}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">
-                    {panel.area_m2.toFixed(4)}
-                  </td>
-                  <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">
-                    {panel.kwh_month.toFixed(2)}
-                  </td>
+                  <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">{panel.area_m2.toFixed(4)}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">{panel.kwh_month.toFixed(2)}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${barColor}`}
-                          style={{ width: `${conf * 100}%` }}
-                        />
+                        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${conf * 100}%` }} />
                       </div>
-                      <span className="text-xs text-muted w-9 text-right tabular-nums">
-                        {(conf * 100).toFixed(0)}%
-                      </span>
+                      <span className="text-xs text-muted w-9 text-right tabular-nums">{(conf * 100).toFixed(0)}%</span>
                     </div>
                   </td>
                 </tr>
