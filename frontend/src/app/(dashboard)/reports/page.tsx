@@ -96,18 +96,26 @@ export default function ReportsPage() {
           <div className="flex-1 min-w-0">
             <h3 className="text-white font-semibold">Relatório Consolidado</h3>
             <p className="text-muted text-sm mt-1">
-              Exporta todos os resultados processados com nome da imagem, quantidade de painéis,
-              área detectada e potencial energético estimado.
+              Exporta todos os resultados em duas abas: resumo por imagem e painéis individuais
+              com coordenadas geográficas e endereço.
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {["Imagem", "Painéis", "Área (m²)", "kWh/mês", "Data"].map((col) => (
-                <span
-                  key={col}
-                  className="text-xs bg-background border border-border text-slate-400 px-2 py-0.5 rounded"
-                >
-                  {col}
-                </span>
-              ))}
+            <div className="mt-3 space-y-2">
+              <p className="text-xs text-slate-500 uppercase tracking-wide">Aba 1 — Resumo</p>
+              <div className="flex flex-wrap gap-2">
+                {["Imagem", "Modelo", "Painéis", "Área (m²)", "kWh/mês", "GSD", "Data"].map((col) => (
+                  <span key={col} className="text-xs bg-background border border-border text-slate-400 px-2 py-0.5 rounded">
+                    {col}
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 uppercase tracking-wide mt-2">Aba 2 — Painéis Individuais</p>
+              <div className="flex flex-wrap gap-2">
+                {["#", "Imagem", "Modelo", "Área (m²)", "kWh/mês", "Confiança", "Lat", "Lon", "Endereço"].map((col) => (
+                  <span key={col} className="text-xs bg-background border border-border text-slate-400 px-2 py-0.5 rounded">
+                    {col}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
           <button

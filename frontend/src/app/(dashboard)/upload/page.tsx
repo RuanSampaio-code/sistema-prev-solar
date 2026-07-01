@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
-import { CloudUpload, X, Loader2, CheckCircle2, Info } from "lucide-react";
+import { CloudUpload, X, Loader2, CheckCircle2, Info, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +42,23 @@ export default function UploadPage() {
   const [threshold, setThreshold] = useState(MODEL_DEFAULT_THRESHOLD["new"]);
   const [gsdInput, setGsdInput] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [processingImage, setProcessingImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function checkProcessing() {
+      try {
+        const res = await api.get("/api/images?page=1&page_size=20");
+        const items: { status: string; original_name: string }[] = res.data.items ?? [];
+        const active = items.find((i) => i.status === "processing" || i.status === "pending");
+        setProcessingImage(active ? active.original_name : null);
+      } catch {
+        // silencia erro — não bloqueia o upload se a checagem falhar
+      }
+    }
+    checkProcessing();
+    const interval = setInterval(checkProcessing, 8000);
+    return () => clearInterval(interval);
+  }, []);
 
   function handleModelChange(value: ModelValue) {
     setModel(value);
@@ -120,6 +137,20 @@ export default function UploadPage() {
         <h1 className="text-2xl font-bold text-white">Upload de Imagens</h1>
         <p className="text-muted text-sm mt-1">Envie imagens de painéis solares para análise</p>
       </div>
+
+      {processingImage && (
+        <div className="flex items-start gap-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-3">
+          <AlertTriangle className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-yellow-300 text-sm font-medium">Processamento em andamento</p>
+            <p className="text-yellow-400/80 text-xs mt-0.5">
+              <span className="font-mono">{processingImage}</span> está sendo analisada.
+              Aguarde o término antes de enviar uma nova imagem — o geocoder de endereços
+              processa uma imagem por vez.
+            </p>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div
@@ -296,7 +327,7 @@ export default function UploadPage() {
 
         <button
           type="submit"
-          disabled={uploading || files.length === 0 || !!gsdError}
+          disabled={uploading || files.length === 0 || !!gsdError || !!processingImage}
           className="flex items-center gap-2 bg-primary text-black font-semibold px-6 py-2.5 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {uploading && <Loader2 className="w-4 h-4 animate-spin" />}

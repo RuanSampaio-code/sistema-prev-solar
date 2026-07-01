@@ -1,7 +1,7 @@
 # Documentação Técnica — PrevSolar
 
 > **Projeto:** Residência TIC UEMA BRISAS  
-> **Versão da documentação:** Junho de 2026  
+> **Versão da documentação:** Julho de 2026  
 > **Stack principal:** FastAPI · PyTorch · UNet/YOLO · Next.js 14 · PostgreSQL · Celery · Redis · Docker
 
 ---
@@ -19,8 +19,9 @@
 9. [Docker](#9-docker)
 10. [Fluxo Completo do Processamento de Imagens](#10-fluxo-completo-do-processamento-de-imagens)
 11. [Modelos de IA](#11-modelos-de-ia)
-12. [Configurações da Aplicação](#12-configurações-da-aplicação)
-13. [Fluxograma Técnico](#13-fluxograma-técnico)
+12. [Geolocalização de Painéis](#12-geolocalização-de-painéis)
+13. [Configurações da Aplicação](#13-configurações-da-aplicação)
+14. [Fluxograma Técnico](#14-fluxograma-técnico)
 
 ---
 
@@ -35,8 +36,10 @@ A plataforma recebe imagens de satélite (GeoTIFF ou JPEG/PNG) de usinas ou telh
 - Contagem precisa dos painéis detectados.
 - Área total ocupada pelos painéis (em m²), calculada usando o GSD real da imagem.
 - Estimativa de geração de energia elétrica mensal (kWh/mês), com base em irradiação solar local calibrada para São Luís-MA.
+- **Coordenadas geográficas (latitude e longitude)** de cada painel detectado, calculadas a partir dos metadados GeoTIFF da imagem.
+- **Endereço por painel** via geocodificação reversa (OpenStreetMap/Nominatim), identificando a rua e bairro de cada painel individualmente.
 - Mapa visual com overlay da máscara segmentada sobre a imagem original, com cada painel numerado e destacado.
-- Exportação dos resultados em XLSX e CSV para uso em relatórios.
+- Exportação dos resultados em XLSX com duas abas: resumo por imagem e dados individuais de cada painel com coordenadas e endereço.
 
 ### Usuários
 
@@ -190,7 +193,8 @@ sequenceDiagram
 | **OpenCV (cv2-headless)** | ~4.10 | Processamento de imagem: tiling, contornos, overlay, conversão BGR/RGB |
 | **NumPy** | ~1.26 | Operações matriciais no pipeline de inferência |
 | **Pillow (PIL)** | ~10.3 | Leitura de GeoTIFFs 16-bit e conversão de modos de cor |
-| **rasterio** | ~1.3 | Leitura de metadados GeoTIFF (transformação geoespacial e CRS) |
+| **rasterio** | ~1.3 | Leitura de metadados GeoTIFF (transformação geoespacial e CRS); conversão pixel→lat/lon |
+| **geopy** | 2.4 | Geocodificação reversa via Nominatim (OpenStreetMap): lat/lon → endereço textual |
 | **ultralytics** | ~8.2 | Framework YOLOv11 para o pipeline alternativo de detecção |
 | **pandas** | ~2.2 | Manipulação de dados para exportação XLSX/CSV |
 | **openpyxl** | ~3.1 | Geração de planilhas XLSX com formatação (cores, congelamento) |
@@ -249,12 +253,14 @@ O frontend é a interface visual da aplicação — aquilo que o usuário acessa
 - Escolhe qual modelo de IA usar: **UNet v2** ou **YOLO v11m**.
 - Ajusta a sensibilidade da detecção com um slider. Valores menores detectam mais painéis (inclusive regiões incertas); valores maiores são mais exigentes.
 - Pode informar manualmente o GSD (distância em metros que cada pixel representa), útil quando a imagem não possui metadados geográficos.
+- **Aviso de processamento em andamento:** quando há uma imagem sendo processada, um banner amarelo alerta o usuário e o botão de envio é desabilitado automaticamente. Isso evita que múltiplas imagens sejam processadas simultaneamente, o que causaria conflitos na geocodificação (rate limit do Nominatim). A página verifica o status a cada 8 segundos e libera o botão assim que o processamento termina.
 
 **Página de Detalhe do Resultado:**
 - Exibe a imagem com os painéis detectados destacados em amarelo e numerados.
 - O zoom e o deslocamento (pan) permitem examinar a imagem em detalhes.
-- A tabela lateral lista cada painel individualmente com sua área em m², estimativa de geração em kWh/mês e nível de confiança da detecção.
+- A tabela lateral lista cada painel individualmente com: área em m², estimativa de geração em kWh/mês, nível de confiança, **latitude, longitude e endereço** (rua, bairro, cidade, estado, CEP).
 - Clicar em um painel na tabela destaca aquele painel na imagem.
+- **Tooltip interativo:** passar o mouse sobre um painel na imagem exibe um card flutuante com todas as informações do painel, incluindo as coordenadas geográficas e o endereço formatado.
 
 **Atualização automática:**
 O frontend verifica automaticamente o status do processamento a cada 5 segundos. Enquanto a IA está trabalhando, uma animação de carregamento é exibida. Assim que o processamento termina, o resultado aparece sem que o usuário precise recarregar a página.
@@ -304,7 +310,38 @@ O banco possui três tabelas principais, cada uma com uma responsabilidade clara
 - `done` — processamento concluído com sucesso
 - `error` — ocorreu um erro durante o processamento
 
-**Resultados** — quando o processamento termina, o resultado completo é salvo aqui: quantidade de painéis detectados, área total em m², estimativa de geração em kWh/mês, o modelo de IA utilizado, o GSD aplicado, e os dados individuais de cada painel (posição, área, estimativa de energia e confiança da detecção).
+**Resultados** — quando o processamento termina, o resultado completo é salvo aqui: quantidade de painéis detectados, área total em m², estimativa de geração em kWh/mês, o modelo de IA utilizado, o GSD aplicado, e os dados individuais de cada painel em formato JSON — incluindo agora os campos de geolocalização.
+
+### Estrutura da coluna `panels` (JSON)
+
+Cada entrada na coluna `panels` da tabela `results` contém um objeto por painel com os seguintes campos:
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `panel_id` | int | Identificador do painel (rank por área decrescente; 1 = maior) |
+| `area_m2` | float | Área do painel em metros quadrados |
+| `kwh_month` | float | Estimativa de geração mensal em kWh |
+| `centroid_x` | int | Posição X do centroide em pixels na imagem original |
+| `centroid_y` | int | Posição Y do centroide em pixels na imagem original |
+| `bbox_x` | int | Coordenada X do canto superior esquerdo do bounding box (pixels) |
+| `bbox_y` | int | Coordenada Y do canto superior esquerdo do bounding box (pixels) |
+| `bbox_width` | int | Largura do bounding box em pixels |
+| `bbox_height` | int | Altura do bounding box em pixels |
+| `confidence_mean` | float | Confiança média da detecção (0.0 a 1.0) |
+| `lat` | float \| null | Latitude do centroide do painel (WGS84) — `null` se imagem não georreferenciada |
+| `lon` | float \| null | Longitude do centroide do painel (WGS84) — `null` se imagem não georreferenciada |
+| `endereco` | string | Endereço por extenso obtido via geocodificação reversa, ou uma das constantes de fallback abaixo |
+
+**Constantes de fallback para o campo `endereco`:**
+
+| Valor | Significado |
+|-------|-------------|
+| `"Não Georreferenciado"` | Imagem sem metadados GeoTIFF válidos (JPG/PNG ou TIFF sem CRS) |
+| `"Não solicitado"` | `ENABLE_GEOCODING=false` — geocodificação desligada no servidor |
+| `"Endereço não encontrado"` | Nominatim não retornou resultado para as coordenadas |
+| `"Falha ao obter endereço"` | Todas as 3 tentativas de conexão com Nominatim falharam |
+
+> **Importante:** os campos `lat`, `lon` e `endereco` foram adicionados à coluna JSON existente sem necessidade de migração de banco de dados. Resultados anteriores (sem esses campos) continuam válidos — os campos simplesmente ficarão ausentes no JSON e o schema os trata como `null`/`"Não Georreferenciado"` por padrão.
 
 ### Relacionamento entre as tabelas
 
@@ -333,7 +370,8 @@ erDiagram
         float area_m2
         float kwh_mes
         varchar modelo_usado
-        json paineis_individuais
+        float gsd_usado_m_px
+        json paineis_individuais "panel_id, area_m2, kwh_month, centroid_x/y, bbox, confidence_mean, lat, lon, endereco"
     }
 
     users ||--o{ images : "envia"
@@ -594,9 +632,80 @@ Para evitar recarregar o modelo do disco a cada imagem processada (o que seria m
 
 ---
 
+## 12. Geolocalização de Painéis
+
+A geolocalização é uma funcionalidade opcional que enriquece cada painel detectado com **coordenadas geográficas (lat/lon)** e **endereço textual**. Só é possível quando a imagem enviada é um GeoTIFF com metadados de projeção geoespacial válidos — formato padrão de imagens exportadas por drones e softwares GIS.
+
+### Como funciona
+
+O processo de geolocalização ocorre em três etapas independentes dentro do pipeline de inferência:
+
+**Etapa 1 — Leitura dos metadados (sem custo, ~0ms)**
+
+Antes de carregar qualquer pixel, o módulo `backend/ai/geo.py` abre o GeoTIFF exclusivamente para ler o cabeçalho via `rasterio`:
+
+- `transform`: matriz afim que converte coordenadas de pixels em coordenadas geográficas
+- `crs`: sistema de referência espacial da imagem (ex: EPSG:4326 = WGS84/lat-lon, EPSG:32724 = UTM zona 24S)
+
+Se a imagem não for `.tif`/`.tiff`, ou não tiver metadados válidos, o campo `lat`/`lon` fica `null` e `endereco` recebe `"Não Georreferenciado"`. O processamento da IA continua normalmente.
+
+**Etapa 2 — Conversão pixel → lat/lon (matemática pura, ~0ms por painel)**
+
+Para cada painel detectado, as coordenadas do centroide em pixels `(cx, cy)` são convertidas para coordenadas geográficas:
+
+```
+(cx, cy)
+  → rasterio.transform.xy()     # pixel → coordenada no CRS da imagem
+  → se CRS ≠ EPSG:4326:
+      rasterio.warp.transform()  # reprojecta para WGS84
+  → (lat, lon)
+```
+
+Esta etapa não faz nenhuma chamada de rede. 52 painéis levam microssegundos.
+
+**Etapa 3 — Geocodificação reversa via Nominatim (rede, ~1.1s por chamada)**
+
+Com as coordenadas em mãos, o módulo chama a API pública do **Nominatim** (OpenStreetMap) para obter o endereço textual:
+
+```
+(-2.4886, -44.2092) → "Rua 21, Alto do Jaguarema, Parque Araçagi,
+                        São José de Ribamar, MA, 65110-000, Brasil"
+```
+
+**Política de retry:** até 3 tentativas com 2s de espera entre falhas recuperáveis (`GeocoderTimedOut`, `GeocoderServiceError`). Exceções inesperadas abortam imediatamente. Após esgotar as tentativas, retorna `"Falha ao obter endereço"`.
+
+### Modos de geocodificação
+
+Controlados pelas variáveis de ambiente `ENABLE_GEOCODING` e `GEOCODING_PER_PANEL`:
+
+| Modo | Configuração | Comportamento | Chamadas Nominatim | Tempo extra |
+|------|-------------|---------------|-------------------|-------------|
+| Desligado | `ENABLE_GEOCODING=false` | Nenhuma chamada de rede; `endereco="Não solicitado"` | 0 | 0s |
+| Por imagem | `ENABLE_GEOCODING=true`<br>`GEOCODING_PER_PANEL=false` | 1 chamada usando o **1º painel detectado** como referência; endereço reutilizado para todos | 1 | ~2s |
+| Por painel | `ENABLE_GEOCODING=true`<br>`GEOCODING_PER_PANEL=true` | 1 chamada por painel; cada painel tem seu próprio endereço | N (1 por painel) | ~1.1s × N painéis |
+
+> **Atenção ao rate limit:** o Nominatim permite apenas **1 requisição por segundo por IP**. Com `GEOCODING_PER_PANEL=true` e o worker Celery rodando com `concurrency=4`, processar duas imagens simultaneamente gera requisições paralelas que retornam `HTTP 429 Too Many Requests`. Por isso, o frontend bloqueia o envio de uma nova imagem enquanto outra estiver em processamento.
+
+### Módulo `backend/ai/geo.py`
+
+| Função | Descrição |
+|--------|-----------|
+| `read_geo_metadata(filepath)` | Lê `transform` e `crs` do GeoTIFF; retorna `(None, None)` para não-TIFFs |
+| `is_georeferenced(transform, crs)` | `True` somente se ambos não forem `None` |
+| `pixel_to_latlon(transform, crs, cx, cy)` | Converte centroide em pixels para `(lat, lon)` WGS84 |
+| `reverse_geocode(lat, lon)` | Geocodificação reversa com 3 tentativas e backoff |
+| `get_image_address(transform, crs, h, w)` | Atalho: geocodifica o centro geométrico da imagem |
+
+### Relatório Excel — aba "Painéis Individuais"
+
+O relatório exportado em XLSX passou a ter **duas abas**:
+
+- **Resumo** — uma linha por imagem processada: nome, modelo, quantidade de painéis, área total, kWh/mês, GSD, data
+- **Painéis Individuais** — uma linha por painel: `#`, imagem, modelo, área (m²), geração (kWh/mês), confiança (%), centroide X/Y, **latitude**, **longitude**, **endereço** — células geográficas destacadas em azul quando georreferenciadas
+
 ---
 
-## 12. Configurações da Aplicação
+## 13. Configurações da Aplicação
 
 A aplicação é configurada por um arquivo chamado `.env`, localizado na raiz do projeto. Esse arquivo concentra todas as definições que podem variar de ambiente para ambiente (desenvolvimento, produção, etc.) sem precisar alterar o código.
 
@@ -635,6 +744,15 @@ Com esses valores, a fórmula aplicada é:
 
 > **kWh/mês = área (m²) × 5,5 × 0,18 × (1 - 0,14) × 30 dias**
 
+### Configurações de geolocalização
+
+| Configuração | Valor padrão | Descrição |
+|-------------|-------------|-----------|
+| `ENABLE_GEOCODING` | `true` | Liga/desliga a geocodificação reversa via Nominatim. Quando `false`, lat/lon ainda são calculados (para GeoTIFFs), mas `endereco` fica como `"Não solicitado"` |
+| `GEOCODING_PER_PANEL` | `true` | `true` = 1 chamada Nominatim por painel (endereços individuais, ~1.1s × N painéis). `false` = 1 chamada por imagem, endereço compartilhado entre todos os painéis (~2s) |
+
+> **Recomendação de uso:** manter `GEOCODING_PER_PANEL=true` para máxima precisão. Processar **uma imagem por vez** para evitar `HTTP 429` do Nominatim (rate limit: 1 req/s por IP).
+
 ### Arquivos dos modelos de IA
 
 Os modelos treinados ficam na pasta `docs/model/` e são automaticamente disponibilizados para o backend:
@@ -648,7 +766,7 @@ Os modelos treinados ficam na pasta `docs/model/` e são automaticamente disponi
 
 ---
 
-## 13. Fluxograma Técnico
+## 14. Fluxograma Técnico
 
 ### Fluxo completo da aplicação
 
@@ -753,15 +871,20 @@ Celery Worker
   │
   ├─► cv2.findContours()
   │
+  ├─► read_geo_metadata()    ← rasterio: lê transform + CRS do GeoTIFF (sem pixels)
+  │     └─ se não georreferenciado: lat=null, lon=null, endereco="Não Georreferenciado"
+  │
   ├─► _extract_panels()
   │     ├─ área_m² = area_px × GSD²
   │     ├─ kWh/mês = área × 5.5 × 0.18 × 0.86 × 30
   │     ├─ centroide, bbox, confiança média
+  │     ├─ pixel_to_latlon(cx, cy) → (lat, lon) por painel  ← cálculo puro, ~0ms
+  │     ├─ reverse_geocode(lat, lon) → endereço             ← Nominatim, 1.1s/painel
   │     └─ ordena por área (maior = panel_id=1)
   │
   ├─► _save_mask()          ← PNG em /app/uploads
   │
-  ├─► INSERT Result(panel_count, area_m², kWh, mask_path, panels[JSON])
+  ├─► INSERT Result(panel_count, area_m², kWh, mask_path, panels[JSON com lat/lon/endereco])
   └─► UPDATE Image(status=done)
         │
         ▼
@@ -778,4 +901,4 @@ Frontend polling → status=done
 
 ---
 
-*Documentação gerada em junho de 2026. Para questões sobre o projeto, consulte o README.md ou os notebooks de validação (`test-model-unet.ipynb`, `test-model-unet-v2.ipynb`).*
+*Documentação atualizada em julho de 2026. Para questões sobre o projeto, consulte o README.md ou os notebooks de validação (`test-model-unet.ipynb`, `test-model-unet-v2.ipynb`).*

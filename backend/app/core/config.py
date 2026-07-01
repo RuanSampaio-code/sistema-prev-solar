@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     EFICIENCIA_MEDIA: float = 0.18  # eficiência típica de painel fotovoltaico (18%)
     PERDAS_SISTEMA: float = 0.14    # perdas por cabeamento, inversor, sujeira etc.
 
+    # Geolocalização — desativado por padrão para não impactar ambientes de teste
+    # ENABLE_GEOCODING=true  → ativa geocodificação reversa (lat/lon → endereço)
+    # GEOCODING_PER_PANEL=true → 1 consulta Nominatim por painel (lento, evite em produção)
+    # GEOCODING_PER_PANEL=false (padrão) → 1 consulta por imagem, reutilizada para todos os painéis
+    ENABLE_GEOCODING: bool = False
+    GEOCODING_PER_PANEL: bool = False
+
     @property
     def DATABASE_URL(self) -> str:
         return (

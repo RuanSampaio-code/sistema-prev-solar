@@ -13,6 +13,10 @@ class PanelResultSchema(BaseModel):
     bbox_width: int
     bbox_height: int
     confidence_mean: float
+    # Geolocalização — presentes quando a imagem for GeoTIFF georreferenciado
+    lat: float | None = None
+    lon: float | None = None
+    endereco: str = "Não Georreferenciado"
 
     model_config = {"from_attributes": True}
 

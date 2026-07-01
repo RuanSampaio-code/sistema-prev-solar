@@ -175,6 +175,11 @@ def _extract_panels_yolo(
     contours,
     detections: list,
     gsd: float,
+    *,
+    transform=None,
+    crs=None,
+    enable_geocoding: bool = False,
+    geocoding_per_panel: bool = False,
 ) -> List[PanelResult]:
     """
     Converte contornos da máscara YOLO em PanelResult, compatível com UNet.
@@ -184,8 +189,13 @@ def _extract_panels_yolo(
 
     panel_id é atribuído por rank de área decrescente (maior = 1),
     igual ao pipeline UNet, para consistência no frontend.
+    Quando transform/crs válidos, popula lat, lon e endereco em cada painel.
     """
+    from ai.geo import pixel_to_latlon, reverse_geocode, NOT_GEOREFERENCED, GEOCODE_NOT_REQUESTED
+
     panels: List[PanelResult] = []
+    georef = transform is not None and crs is not None
+    _shared_address: str | None = None
 
     for contour in contours:
         area_px = cv2.contourArea(contour)
@@ -211,6 +221,21 @@ def _extract_panels_yolo(
             if box[0] <= cx <= box[2] and box[1] <= cy <= box[3]:
                 conf_mean = max(conf_mean, c)
 
+        if georef:
+            lat, lon = pixel_to_latlon(transform, crs, cx, cy)
+            if enable_geocoding:
+                if geocoding_per_panel:
+                    endereco = reverse_geocode(lat, lon)
+                else:
+                    if _shared_address is None:
+                        _shared_address = reverse_geocode(lat, lon)
+                    endereco = _shared_address
+            else:
+                endereco = GEOCODE_NOT_REQUESTED
+        else:
+            lat, lon = None, None
+            endereco = NOT_GEOREFERENCED
+
         panels.append(PanelResult(
             panel_id=0,
             area_m2=area_m2,
@@ -222,6 +247,9 @@ def _extract_panels_yolo(
             bbox_width=bw,
             bbox_height=bh,
             confidence_mean=round(conf_mean, 4),
+            lat=lat,
+            lon=lon,
+            endereco=endereco,
         ))
 
     panels.sort(key=lambda p: p.area_m2, reverse=True)
@@ -235,12 +263,26 @@ def process_image_yolo(
     filepath: str,
     conf: float = _DEFAULT_CONF,
     gsd_override: float | None = None,
+    enable_geocoding: bool = False,
+    geocoding_per_panel: bool = False,
 ) -> PipelineResult:
     """
     Ponto de entrada do pipeline YOLO. Retorna PipelineResult com o mesmo
     contrato dos modelos UNet — compatível com tasks, routes e frontend.
     """
+    import logging as _logging
+    from ai.geo import read_geo_metadata, is_georeferenced, NOT_GEOREFERENCED
+
+    _log = _logging.getLogger(__name__)
+
+    transform, crs = read_geo_metadata(filepath)
+    georef = is_georeferenced(transform, crs)
+    if not georef:
+        _log.warning("⚠ Imagem sem georreferenciamento: %s", filepath)
+
     img = _garantir_bgr(_load_image(filepath))
+    h, w = img.shape[:2]
+
     gsd = gsd_override if gsd_override is not None else _get_gsd(filepath)
 
     yolo_model = _load_yolo(_YOLO_MODEL_PATH)
@@ -251,7 +293,15 @@ def process_image_yolo(
         cv2.RETR_EXTERNAL,
         cv2.CHAIN_APPROX_SIMPLE,
     )
-    panels = _extract_panels_yolo(contours, detections, gsd)
+    panels = _extract_panels_yolo(
+        contours,
+        detections,
+        gsd,
+        transform=transform,
+        crs=crs,
+        enable_geocoding=enable_geocoding,
+        geocoding_per_panel=geocoding_per_panel,
+    )
 
     area_m2 = round(sum(p.area_m2 for p in panels), 2)
     kwh = _estimate_kwh(area_m2)
@@ -264,4 +314,5 @@ def process_image_yolo(
         mask_filepath=mask_path,
         panels=panels,
         gsd_used_m_px=round(gsd, 6),
+        image_georeferenced=georef,
     )

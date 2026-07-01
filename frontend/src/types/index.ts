@@ -22,6 +22,9 @@ export interface Panel {
   bbox_width: number;
   bbox_height: number;
   confidence_mean: number;
+  lat: number | null;
+  lon: number | null;
+  endereco: string;
 }
 
 export interface Result {

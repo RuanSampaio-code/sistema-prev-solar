@@ -43,6 +43,10 @@ class PanelResult:
     bbox_width: int
     bbox_height: int
     confidence_mean: float
+    # Campos de geolocalização — preenchidos quando a imagem é GeoTIFF georreferenciado
+    lat: float | None = None
+    lon: float | None = None
+    endereco: str = "Não Georreferenciado"
 
 
 @dataclass
@@ -53,6 +57,7 @@ class PipelineResult:
     mask_filepath: str | None
     panels: List[PanelResult]
     gsd_used_m_px: float = 0.0
+    image_georeferenced: bool = False
 
 
 def _estimate_kwh(area_m2: float) -> float:
@@ -182,13 +187,29 @@ def _run_tiled_inference(img: np.ndarray, model_name: str = "default") -> np.nda
     return prob_acum / count_acum
 
 
-def _extract_panels(contours, prob_map: np.ndarray, gsd: float) -> List[PanelResult]:
+def _extract_panels(
+    contours,
+    prob_map: np.ndarray,
+    gsd: float,
+    *,
+    transform=None,
+    crs=None,
+    enable_geocoding: bool = False,
+    geocoding_per_panel: bool = False,
+) -> List[PanelResult]:
     """Converte contornos em PanelResult individuais com área, kWh, centroide, bbox e confiança.
 
     panel_id é atribuído por rank de área decrescente (maior painel = id 1) para
     coincidir com a ordem exibida na tabela e com os rótulos do overlay de visualização.
+    Quando transform/crs válidos, popula lat, lon e endereco em cada painel.
     """
+    from ai.geo import pixel_to_latlon, reverse_geocode, NOT_GEOREFERENCED, GEOCODE_NOT_REQUESTED
+
     panels: List[PanelResult] = []
+    georef = transform is not None and crs is not None
+    # Endereço reutilizado para todos os painéis quando geocoding_per_panel=False.
+    # Computed da primeira detecção válida (igual ao script de referência unet_inferencia_geo.py).
+    _shared_address: str | None = None
 
     for contour in contours:
         area_px = cv2.contourArea(contour)
@@ -213,6 +234,21 @@ def _extract_panels(contours, prob_map: np.ndarray, gsd: float) -> List[PanelRes
         pixels_inside = prob_map[mask_contour == 1]
         conf_mean = round(float(pixels_inside.mean()), 4) if len(pixels_inside) > 0 else 0.0
 
+        if georef:
+            lat, lon = pixel_to_latlon(transform, crs, cx, cy)
+            if enable_geocoding:
+                if geocoding_per_panel:
+                    endereco = reverse_geocode(lat, lon)
+                else:
+                    if _shared_address is None:
+                        _shared_address = reverse_geocode(lat, lon)
+                    endereco = _shared_address
+            else:
+                endereco = GEOCODE_NOT_REQUESTED
+        else:
+            lat, lon = None, None
+            endereco = NOT_GEOREFERENCED
+
         panels.append(PanelResult(
             panel_id=0,  # placeholder; atribuído por rank abaixo
             area_m2=area_m2,
@@ -224,6 +260,9 @@ def _extract_panels(contours, prob_map: np.ndarray, gsd: float) -> List[PanelRes
             bbox_width=bw,
             bbox_height=bh,
             confidence_mean=conf_mean,
+            lat=lat,
+            lon=lon,
+            endereco=endereco,
         ))
 
     # Ordena por área decrescente e atribui panel_id = rank (1 = maior)
@@ -247,12 +286,20 @@ def process_image(
     threshold: float | None = None,
     model_name: str = "default",
     gsd_override: float | None = None,
+    enable_geocoding: bool = False,
+    geocoding_per_panel: bool = False,
 ) -> PipelineResult:
     # YOLO usa um pipeline completamente diferente — delega sem modificar o fluxo UNet
     if model_name == "yolo":
         from ai.yolo_pipeline import process_image_yolo
         conf = threshold if threshold is not None else 0.30
-        return process_image_yolo(filepath, conf=conf, gsd_override=gsd_override)
+        return process_image_yolo(
+            filepath,
+            conf=conf,
+            gsd_override=gsd_override,
+            enable_geocoding=enable_geocoding,
+            geocoding_per_panel=geocoding_per_panel,
+        )
 
     if model_name not in AVAILABLE_MODELS:
         raise ValueError(f"Modelo desconhecido: '{model_name}'. Disponíveis: {AVAILABLE_MODELS}")
@@ -260,8 +307,19 @@ def process_image(
     if threshold is None:
         threshold = _MODEL_INFERENCE_PARAMS.get(model_name, _MODEL_INFERENCE_PARAMS["default"])["default_threshold"]
 
+    # Metadados geoespaciais — lidos antes de carregar os pixels (sem custo extra)
+    from ai.geo import read_geo_metadata, is_georeferenced, NOT_GEOREFERENCED
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
+    transform, crs = read_geo_metadata(filepath)
+    georef = is_georeferenced(transform, crs)
+    if not georef:
+        _log.warning("⚠ Imagem sem georreferenciamento: %s", filepath)
+
     # Carrega em resolução nativa — sem redimensionar
     img = _load_image(filepath)
+    h, w = img.shape[:2]
 
     # GSD em metros/pixel — override manual tem prioridade sobre metadado do arquivo
     gsd = gsd_override if gsd_override is not None else _get_gsd(filepath)
@@ -271,7 +329,15 @@ def process_image(
     mask_bin = (prob_map > threshold).astype(np.uint8)
 
     contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    panels = _extract_panels(contours, prob_map, gsd)
+    panels = _extract_panels(
+        contours,
+        prob_map,
+        gsd,
+        transform=transform,
+        crs=crs,
+        enable_geocoding=enable_geocoding,
+        geocoding_per_panel=geocoding_per_panel,
+    )
 
     area_m2 = round(sum(p.area_m2 for p in panels), 2)
     kwh = _estimate_kwh(area_m2)
@@ -284,4 +350,5 @@ def process_image(
         mask_filepath=mask_path,
         panels=panels,
         gsd_used_m_px=round(gsd, 6),
+        image_georeferenced=georef,
     )

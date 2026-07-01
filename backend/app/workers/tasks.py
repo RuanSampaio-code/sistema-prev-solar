@@ -2,6 +2,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 
 from app.workers.celery_app import celery_app
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.image import ImageStatus
 from app.models.result import Result
@@ -31,6 +32,8 @@ def process_image_task(
             threshold=threshold,
             model_name=model_name,
             gsd_override=gsd_m_px,
+            enable_geocoding=settings.ENABLE_GEOCODING,
+            geocoding_per_panel=settings.GEOCODING_PER_PANEL,
         )
 
         # remove resultado anterior se existir (reprocessamento)

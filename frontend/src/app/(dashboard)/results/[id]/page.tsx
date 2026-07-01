@@ -516,12 +516,58 @@ function VizImage({
 // PanelTooltip — tooltip fixed que segue o cursor
 // ---------------------------------------------------------------------------
 
+const GEO_FALLBACKS = new Set([
+  "Não Georreferenciado",
+  "Não solicitado",
+  "Falha ao obter endereço",
+  "Endereço não encontrado",
+]);
+
+// Nominatim pt-BR format:
+// "Rua X, Bairro, Distrito, Cidade, Estado, Região Nordeste, 00000-000, Brasil"
+interface ParsedAddress {
+  logradouro: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  estado: string | null;
+  cep: string | null;
+}
+
+function parseEndereco(endereco: string): ParsedAddress | null {
+  if (!endereco || GEO_FALLBACKS.has(endereco)) return null;
+
+  const cepMatch = endereco.match(/\d{5}-\d{3}/);
+  const cep = cepMatch?.[0] ?? null;
+
+  const parts = endereco
+    .split(", ")
+    .map((p) => p.trim())
+    .filter(
+      (p) =>
+        p !== "Brasil" &&
+        !p.startsWith("Região") &&
+        p !== cep
+    );
+
+  if (parts.length < 2) return { logradouro: endereco, bairro: null, cidade: null, estado: null, cep };
+
+  const logradouro = parts[0];
+  const estado = parts[parts.length - 1];
+  const cidade = parts[parts.length - 2];
+  const bairro = parts.slice(1, -2).join(", ") || null;
+
+  return { logradouro, bairro, cidade, estado, cep };
+}
+
 function PanelTooltip({ panel, x, y }: { panel: Panel; x: number; y: number }) {
   const OFFSET = 16;
-  const W = 200;
+  const W = 260;
 
   const left = x + OFFSET + W > window.innerWidth ? x - W - OFFSET : x + OFFSET;
   const top = y - 10;
+
+  const hasCoords = panel.lat != null && panel.lon != null;
+  const parsed = parseEndereco(panel.endereco);
 
   return (
     <div
@@ -542,6 +588,50 @@ function PanelTooltip({ panel, x, y }: { panel: Panel; x: number; y: number }) {
           <span className="text-slate-400">Confiança</span>
           <span className="text-white font-mono">{(panel.confidence_mean * 100).toFixed(0)}%</span>
         </div>
+
+        {(hasCoords || parsed) && (
+          <div className="border-t border-white/10 my-1.5" />
+        )}
+
+        {hasCoords && (
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-400 shrink-0">Lat / Lon</span>
+            <span className="text-white font-mono text-right">
+              {panel.lat!.toFixed(6)}, {panel.lon!.toFixed(6)}
+            </span>
+          </div>
+        )}
+
+        {parsed && (
+          <div className="space-y-0.5 mt-0.5">
+            {parsed.logradouro && (
+              <div className="flex gap-2">
+                <span className="text-slate-400 w-14 shrink-0">Rua</span>
+                <span className="text-white">{parsed.logradouro}</span>
+              </div>
+            )}
+            {parsed.bairro && (
+              <div className="flex gap-2">
+                <span className="text-slate-400 w-14 shrink-0">Bairro</span>
+                <span className="text-white leading-snug">{parsed.bairro}</span>
+              </div>
+            )}
+            {parsed.cidade && (
+              <div className="flex gap-2">
+                <span className="text-slate-400 w-14 shrink-0">Cidade</span>
+                <span className="text-white">
+                  {parsed.cidade}{parsed.estado ? ` — ${parsed.estado.slice(0, 2).toUpperCase()}` : ""}
+                </span>
+              </div>
+            )}
+            {parsed.cep && (
+              <div className="flex gap-2">
+                <span className="text-slate-400 w-14 shrink-0">CEP</span>
+                <span className="text-white font-mono">{parsed.cep}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <p className="text-[10px] text-slate-500 mt-2">Clique para destacar na tabela</p>
     </div>
@@ -562,6 +652,16 @@ function PanelsTable({
   onSelectPanel: (panel: Panel | null) => void;
 }) {
   const sorted = useMemo(() => [...panels].sort((a, b) => b.area_m2 - a.area_m2), [panels]);
+
+  // Decide se exibe colunas geo: pelo menos um painel tem coordenadas válidas
+  const showGeo = useMemo(
+    () => panels.some((p) => p.lat != null && p.lon != null),
+    [panels]
+  );
+  const showAddress = useMemo(
+    () => panels.some((p) => p.endereco && !GEO_FALLBACKS.has(p.endereco)),
+    [panels]
+  );
 
   if (panels.length === 0) {
     return (
@@ -585,6 +685,12 @@ function PanelsTable({
               <th className="text-right px-4 py-2.5 text-muted font-medium">Área (m²)</th>
               <th className="text-right px-4 py-2.5 text-muted font-medium">Geração (kWh/mês)</th>
               <th className="px-4 py-2.5 text-muted font-medium w-48">Confiança</th>
+              {showGeo && (
+                <th className="text-right px-4 py-2.5 text-muted font-medium whitespace-nowrap">Lat / Lon</th>
+              )}
+              {showAddress && (
+                <th className="text-left px-4 py-2.5 text-muted font-medium min-w-48">Endereço</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -592,6 +698,7 @@ function PanelsTable({
               const isSelected = panel.panel_id === selectedPanelId;
               const conf = panel.confidence_mean;
               const barColor = conf >= 0.8 ? "bg-green-500" : conf >= 0.5 ? "bg-yellow-500" : "bg-red-500";
+              const hasAddress = panel.endereco && !GEO_FALLBACKS.has(panel.endereco);
               return (
                 <tr
                   key={panel.panel_id}
@@ -611,6 +718,33 @@ function PanelsTable({
                       <span className="text-xs text-muted w-9 text-right tabular-nums">{(conf * 100).toFixed(0)}%</span>
                     </div>
                   </td>
+                  {showGeo && (
+                    <td className="px-4 py-2.5 text-right font-mono text-xs text-slate-400 tabular-nums whitespace-nowrap">
+                      {panel.lat != null && panel.lon != null
+                        ? `${panel.lat.toFixed(6)}, ${panel.lon.toFixed(6)}`
+                        : <span className="text-slate-600">—</span>}
+                    </td>
+                  )}
+                  {showAddress && (
+                    <td className="px-4 py-2.5 text-left text-xs max-w-xs">
+                      {(() => {
+                        const p = parseEndereco(panel.endereco);
+                        if (!p) return <span className="text-slate-600">—</span>;
+                        return (
+                          <span title={panel.endereco} className="text-slate-300 leading-snug">
+                            <span className="text-white">{p.logradouro}</span>
+                            {p.bairro && <span className="text-slate-400"> · {p.bairro}</span>}
+                            {p.cidade && (
+                              <span className="block text-slate-500 text-[11px] mt-0.5">
+                                {p.cidade}{p.estado ? ` — ${p.estado.slice(0, 2).toUpperCase()}` : ""}
+                                {p.cep ? ` · ${p.cep}` : ""}
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                  )}
                 </tr>
               );
             })}
