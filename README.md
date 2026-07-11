@@ -226,9 +226,48 @@ sistema-prev-solar/
 │       │   ├── upload/
 │       │   ├── results/
 │       │   └── reports/
-└── docs/
-    └── model/Model-unet.pth
+├── docs/
+│   └── model/              # pesos dos modelos (baixar do Drive, ver seção abaixo)
+├── geopy/
+│   ├── unet/                # inferência UNet com georreferenciamento
+│   └── yolo/                 # inferência YOLO com georreferenciamento
+├── inferecia-scripts-novos/ # notebooks com pipelines de inferência mais recentes
+├── images-slz/               # imagens de drone (.tif) usadas em testes
+└── resultados_unet/          # resultados de execuções de teste do UNet
 ```
+
+---
+
+## Modelos treinados (pesos)
+
+Os pesos dos modelos (UNet e YOLO) não ficam versionados no Git por serem arquivos grandes. Baixe-os no Google Drive e copie para a pasta `docs/model/`:
+
+**Download:** https://drive.google.com/drive/u/1/folders/1OhfAx8afNBYVyU7OdWDR1TAEnBUFuUpN
+
+| Arquivo | Descrição |
+|---|---|
+| `Model-unet.pth` | Modelo UNet usado pelo pipeline de produção (`backend/ai/inference.py`) |
+| `NewModelUnet.pth` | Nova versão do modelo UNet, em teste |
+| `NewModelYolo11m.pt` | Modelo YOLOv11 para segmentação/detecção de painéis |
+
+Basta baixar os arquivos do Drive e colocar em `docs/model/` antes de subir o backend/worker.
+
+---
+
+## Pastas de pesquisa e Machine Learning
+
+Além do pipeline de produção (`backend/ai/`), o repositório tem pastas de apoio usadas para testes, geração de dataset e comparação de modelos:
+
+| Pasta / Arquivo | Descrição |
+|---|---|
+| `geopy/unet/` | Script `unet_inferencia_geo.py` — roda o UNet com georreferenciamento e gera máscara, overlay e CSV com as coordenadas dos painéis detectados |
+| `geopy/yolo/` | Script `segmentacao_paineis_geo_v3_YOLO.py` — mesma ideia do UNet, mas usando o modelo YOLO |
+| `inferecia-scripts-novos/` | Notebooks Jupyter com as versões mais recentes dos pipelines de inferência (UNet → JSON e pipeline YOLO completo) |
+| `images-slz/` | Imagens de drone (`.tif`) usadas como entrada para os testes de inferência |
+| `resultados_unet/` | Resultados (imagem processada + JSON) gerados pelas execuções de teste do UNet |
+| `test-model-unet.ipynb` / `test-model-unet-v2.ipynb` | Notebooks para testar o modelo UNet localmente |
+
+> Essas pastas não fazem parte do fluxo do backend em produção — servem para experimentação e para gerar os modelos usados em `docs/model/`.
 
 ---
 
