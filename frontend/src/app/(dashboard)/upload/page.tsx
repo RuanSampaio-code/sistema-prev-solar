@@ -309,7 +309,7 @@ export default function UploadPage() {
                   step="0.001"
                   min="0.01"
                   max="1.0"
-                  placeholder="Ex: 0.0523 — deixe vazio para detectar automaticamente"
+                  placeholder="Ex: 0.0523 — deixe vazio para usar o metadado do arquivo (ou 0.30 m/px se indisponível)"
                   value={gsdInput}
                   onChange={(e) => setGsdInput(e.target.value)}
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-white placeholder:text-muted focus:outline-none focus:border-primary"
