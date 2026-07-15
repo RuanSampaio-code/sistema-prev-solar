@@ -1,0 +1,11 @@
+Data: 07 de Abril de 2026
+
+Demandas:
+Discutidos os desafios relacionados ao treinamento dos modelos, em razão do grande volume dos datasets utilizados.
+Verificar a viabilidade de dividir o dataset entre os computadores da equipe, visando distribuir a carga de processamento e reduzir o tempo de treinamento.
+Avaliar alternativas de ambiente computacional para execução dos treinamentos, incluindo o uso de máquinas virtuais e plataformas em nuvem, como Google Colab e Kaggle.
+Recomendações:
+Analisar estratégias de particionamento do dataset sem comprometer a consistência dos experimentos.
+Realizar testes comparativos entre Google Colab, Kaggle e os recursos computacionais disponíveis localmente, considerando desempenho, limitações e tempo de execução.
+
+Reunião encerrada.

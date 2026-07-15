@@ -1,0 +1,14 @@
+Ata de Reunião — Projeto Brisas
+
+Data: 19/05
+
+Pontos discutidos
+Expor no relatório os detalhes da máquina de treinamento utilizada (Kaggle).
+O professor reforçou a necessidade de apresentar informações sobre a qualidade das imagens utilizadas.
+Foi enfatizada a importância de documentar detalhadamente todos os testes realizados no relatório.
+O professor sugeriu, como possibilidade, a utilização de um modelo já pronto disponível na plataforma.
+Houve questionamento sobre a utilização de imagens recortadas durante os testes.
+Necessidade de ampliar a quantidade de imagens utilizadas nos testes.
+Possível reunião online com Matheus para alinhamento e definição de alguns pontos do projeto.
+Para a reunião com Matheus, será necessário levar documentação e materiais relacionados ao projeto.
+Criar um documento consolidando os principais questionamentos e tópicos a serem discutidos com Matheus.

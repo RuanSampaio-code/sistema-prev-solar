@@ -1,0 +1,13 @@
+ATA DE REUNIÃO – UEMA | GRUPO 7
+
+Data:  26 de Junho de 2026
+
+1 Discutimos melhorias no relatório e foi tratado a forma de apresentação para elencar pontos que devem ser adicionados em ambos os documentos
+
+2 Melhorar relatório V1 - primeiros dois modelos (YOLO e UNET) gerados pelo dataset solar_segmentation;
+
+3 Fazer relatório V2 - com os dois modelos (YOLO e UNET) com o novo dataset criado pela equipe; e
+
+4 Próxima reunião mostrar a apresentação final.
+
+Nada mais havendo a tratar, a reunião foi encerrada.

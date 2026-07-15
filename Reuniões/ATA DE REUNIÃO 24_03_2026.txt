@@ -1,0 +1,8 @@
+ATA DE REUNIÃO - UEMA|GRUPO 7
+Data: 24 de Março de 2026
+
+Pontos discutidos:
+
+-Definiu-se como prioridade a obtenção de um dataset contendo imagens de painéis solares para treinamento do modelo de aprendizado de máquina.
+-Foram discutidas tratativas relacionadas à documentação do projeto e ajustes gerais.
+-Ficou registrado que o professor ficará responsável por solicitar à Equatorial os materiais necessários para dar continuidade ao desenvolvimento do projeto.

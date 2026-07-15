@@ -1,0 +1,10 @@
+ATA DE REUNIÃO - UEMA|GRUPO 7
+Data: 09 de junho de 2026
+
+Na data acima mencionada, foi realizada reunião com os membros do Grupo 7, na qual foram tratados os seguintes pontos: 
+
+- Continuar o desenvolvimento do FrontEnd e os testes dos modelos
+- Apresentar o FrontEnd na próxima reunião
+- Criar pasta apresentação do github
+
+Nada mais havendo a tratar, a reunião foi encerrada

@@ -1,0 +1,13 @@
+ATA DE REUNIÃO – UEMA | GRUPO 7
+
+Data:  15 de Junho de 2026
+
+Na data acima mencionada, a reunião foi realizada de forma remota.
+
+1 Apresentamos ao orientador os resultados dos novos modelos treinados YOLO e UNET para o conjunto de 52 imagens enviadas pela EQT LAB;
+
+2 Também foi mostrada a aplicação e suas devidas funcionalidades: escolha de modelos, segmentação de painéis, calculo de área e energia gerada.
+
+3 Na próxima reunião apresentação e discussão do relatório e apresentação.
+
+Nada mais havendo a tratar, a reunião foi encerrada.

@@ -1,0 +1,12 @@
+ATA DE REUNIÃO - UEMA|GRUPO 7
+Data: 03 de Março de 2026
+
+- A reunião teve início com a apresentação de um programa teste desenvolvido pelos alunos
+- Houve um breve debate sobre as técnicas empregadas e resultados do programa
+- Discutimos sobre métodos de treinamento de reconhecimento de imagens 
+- O orientador recomendou:
+	Verificar a segurança da biblioteca utilizada;
+	Estudo e aplicação do UML para futuro desenvolvimento do Front-end
+- Fizemos o registro da reunião
+
+Nada mais havendo a tratar, a reunião foi encerrada

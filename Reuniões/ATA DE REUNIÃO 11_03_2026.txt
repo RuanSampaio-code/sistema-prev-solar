@@ -1,0 +1,16 @@
+ATA DE REUNIÃO - UEMA|GRUPO 7
+Data: 11 de Março de 2026
+
+A empresa fornecerá imagens de satélite no formato TIFF, com resolução aproximada de 50 cm/pixel.
+
+O projeto consiste em identificar os painéis solares presentes em cada unidade consumidora e estimar sua potência instalada.
+
+A estimativa de potência será baseada na área ocupada pelos painéis, utilizando a relação aproximada:
+
+Potência estimada ≈ Área dos painéis × Constante de conversão
+
+Caso uma instalação seja composta por múltiplas áreas de painéis, a área total será obtida pela soma dessas áreas antes da estimativa da potência.
+
+Também foi mencionada a necessidade de considerar aspectos de regulamentação relacionados às unidades consumidoras e aos sistemas fotovoltaicos.
+
+Os telhados serão a principal área de interesse para a identificação e segmentação dos painéis solares.

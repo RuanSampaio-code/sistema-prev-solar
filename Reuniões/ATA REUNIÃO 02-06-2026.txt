@@ -1,0 +1,10 @@
+ATA DE REUNIÃO - UEMA|GRUPO 7
+Data: 02 de junho de 2026
+
+Na data acima mencionada, foi realizada reunião com os membros do Grupo 7, na qual foram tratados os seguintes pontos: 
+
+- Criar um novo datasets com o lote de imagem já enviado pela equatorial
+- Fazer o treino dos modelos do YOLO e UNET
+- Realizar os testes nas novas 52 imagens enviadas pela empresa
+
+Nada mais havendo a tratar, a reunião foi encerrada

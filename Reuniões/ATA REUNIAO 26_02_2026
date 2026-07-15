@@ -1,0 +1,13 @@
+ATA DE REUNIAO - UEMA | GRUPO 7
+
+Data: 26 de fevereiro de 2026
+
+Na data acima mencionada, foi realizada reunião com os membros do Grupo 7, na qual foram tratados os seguintes pontos:
+1. Foi definida a necessidade de preparar o ambiente em todas as máquinas dos integrantes, com o objetivo de possibilitar testes com quaisquer imagens. 
+Ficou acordado que cada membro deverá configurar corretamente o ambiente de desenvolvimento, garantindo a instalação e o funcionamento adequado das ferramentas necessárias.
+2. Foi estabelecida a realização da documentação detalhada das versões do Python e das bibliotecas utilizadas no projeto. A documentação deverá conter as versões exatas instaladas em cada máquina, 
+a fim de assegurar padronização e evitar incompatibilidades futuras.
+3. Foi discutido quais bibliotecas seriam necessárias para a realização de um processamento básico de imagens em Python. Entre os pontos debatidos, considerou-se a utilização de bibliotecas apropriadas 
+para leitura, manipulação, visualização e processamento inicial das imagens, visando atender às necessidades iniciais do projeto.
+
+Nada mais havendo a tratar, a reunião foi encerrada.
